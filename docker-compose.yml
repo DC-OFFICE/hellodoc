@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hellodoc
+      POSTGRES_PASSWORD: hellodoc_dev_change_me
+      POSTGRES_DB: hellodoc
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - hellodoc_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hellodoc -d hellodoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - hellodoc_redis:/data
+volumes:
+  hellodoc_pg:
+  hellodoc_redis:

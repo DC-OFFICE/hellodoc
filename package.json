@@ -1,0 +1,27 @@
+{
+  "name": "hellodoc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HelloDoc SaaS starter - DartCodes (Pvt) Ltd",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "scripts": {
+    "dev": "concurrently --kill-others -n API,WEB -c blue,green \"npm run dev -w @hellodoc/api\" \"npm run dev -w @hellodoc/web\"",
+    "dev:api": "npm run dev -w @hellodoc/api",
+    "dev:web": "npm run dev -w @hellodoc/web",
+    "build": "npm run build -w @hellodoc/api && npm run build -w @hellodoc/web",
+    "typecheck": "npm run typecheck -w @hellodoc/api && npm run typecheck -w @hellodoc/web",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:generate": "npm run prisma:generate -w @hellodoc/api",
+    "db:migrate": "npm run prisma:migrate -w @hellodoc/api",
+    "db:poc": "npm run poc:isolation -w @hellodoc/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

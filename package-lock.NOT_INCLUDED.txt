@@ -1,0 +1,2 @@
+The package-lock.json will be generated on your machine by `npm install`. Commit it immediately to Git.
+This starter is not claimed to be installed, compiled or production-ready.
