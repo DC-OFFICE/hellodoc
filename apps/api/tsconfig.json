@@ -13,6 +13,7 @@
     "sourceMap": true,
     "declaration": true,
     "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },

@@ -15,11 +15,18 @@
     "dev:web": "npm run dev -w @hellodoc/web",
     "build": "npm run build -w @hellodoc/api && npm run build -w @hellodoc/web",
     "typecheck": "npm run typecheck -w @hellodoc/api && npm run typecheck -w @hellodoc/web",
-    "db:up": "docker compose up -d postgres redis",
-    "db:down": "docker compose down",
+    "test": "npm run test -w @hellodoc/api",
+    "test:integration": "npm run test:integration -w @hellodoc/api",
     "db:generate": "npm run prisma:generate -w @hellodoc/api",
-    "db:migrate": "npm run prisma:migrate -w @hellodoc/api",
-    "db:poc": "npm run poc:isolation -w @hellodoc/api"
+    "db:migrate": "npm run prisma:deploy -w @hellodoc/api",
+    "db:migrate:dev": "npm run prisma:migrate -w @hellodoc/api",
+    "db:poc": "npm run poc:isolation -w @hellodoc/api",
+    "create-platform-admin": "npm run create-platform-admin -w @hellodoc/api --",
+    "tenants:migrate": "npm run tenants:migrate -w @hellodoc/api",
+    "tenants:rename-schemas": "npm run tenants:rename-schemas -w @hellodoc/api",
+    "catalogs:seed": "npm run catalogs:seed -w @hellodoc/api",
+    "db:up": "echo Docker is optional. Use local PostgreSQL and scripts/bootstrap-local-postgres.sql",
+    "db:down": "echo Docker is optional for HelloDoc local development."
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

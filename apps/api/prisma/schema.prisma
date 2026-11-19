@@ -1,5 +1,5 @@
 // Platform control-plane only. Per-dispensary tables are NOT in this Prisma client.
-// Prisma's static @@schema does not implement dynamic schema-per-clinic routing.
+// Clinic schemas are provisioned via versioned SQL + the pg driver.
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -11,26 +11,52 @@ datasource db {
   schemas  = ["platform"]
 }
 
-model Tenant {
-  id          String             @id @default(uuid()) @db.Uuid
-  name        String
-  slug        String             @unique
-  schemaName  String             @unique
-  status      String             @default("PROVISIONING")
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  memberships TenantMembership[]
+model PlatformUser {
+  id              String             @id @default(uuid()) @db.Uuid
+  name            String
+  email           String             @unique
+  emailNormalized String             @unique
+  passwordHash    String
+  active          Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  memberships     TenantMembership[]
+  sessions        AuthSession[]
+  platformAdmin   PlatformAdmin?
+  registrations   ClinicRegistration[] @relation("RegistrationApplicant")
+  reviews         ClinicRegistration[] @relation("RegistrationReviewer")
+  auditLogs       AuditLog[]
+
   @@schema("platform")
 }
 
-model PlatformUser {
-  id           String             @id @default(uuid()) @db.Uuid
-  email        String             @unique
-  name         String
-  passwordHash String
-  active       Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  memberships  TenantMembership[]
+model PlatformAdmin {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @unique @db.Uuid
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  user      PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("platform")
+}
+
+model Tenant {
+  id                 String               @id @default(uuid()) @db.Uuid
+  clinicName         String
+  slug               String               @unique
+  schemaName         String               @unique
+  registrationStatus String               @default("PENDING_APPROVAL")
+  provisioningStatus String               @default("NOT_STARTED")
+  status             String               @default("PROVISIONING")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  memberships        TenantMembership[]
+  registration       ClinicRegistration?
+  provisioning       ProvisioningRecord[]
+  trackingTokens     TrackingTokenIndex[]
+  smsDispatch        SmsDispatchIndex[]
+
+  @@index([status])
   @@schema("platform")
 }
 
@@ -39,10 +65,152 @@ model TenantMembership {
   tenantId  String       @db.Uuid
   userId    String       @db.Uuid
   role      String
+  active    Boolean      @default(true)
   createdAt DateTime     @default(now())
-  tenant    Tenant       @relation(fields: [tenantId], references: [id])
-  user      PlatformUser @relation(fields: [userId], references: [id])
+  updatedAt DateTime     @updatedAt
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, userId, role])
+  @@index([userId])
   @@index([tenantId])
+  @@schema("platform")
+}
+
+model ClinicRegistration {
+  id               String        @id @default(uuid()) @db.Uuid
+  clinicName       String
+  ownerName        String
+  email            String
+  emailNormalized  String
+  mobile           String
+  address          String
+  passwordHash     String
+  status           String        @default("PENDING_APPROVAL")
+  applicantUserId  String?       @db.Uuid
+  tenantId         String?       @unique @db.Uuid
+  reviewedById     String?       @db.Uuid
+  reviewedAt       DateTime?
+  rejectionReason  String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  applicant        PlatformUser? @relation("RegistrationApplicant", fields: [applicantUserId], references: [id])
+  reviewedBy       PlatformUser? @relation("RegistrationReviewer", fields: [reviewedById], references: [id])
+  tenant           Tenant?       @relation(fields: [tenantId], references: [id])
+
+  @@index([status])
+  @@index([emailNormalized])
+  @@schema("platform")
+}
+
+model ProvisioningRecord {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  schemaName       String
+  state            String
+  migrationVersion String?
+  failureReason    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  completedAt      DateTime?
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([state])
+  @@schema("platform")
+}
+
+model AuthSession {
+  id               String       @id @default(uuid()) @db.Uuid
+  userId           String       @db.Uuid
+  tokenHash        String       @unique
+  context          String
+  activeTenantId   String?      @db.Uuid
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime     @default(now())
+  lastSeenAt       DateTime     @default(now())
+  ipHash           String?
+  userAgentHash    String?
+  user             PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@schema("platform")
+}
+
+model AuditLog {
+  id         String        @id @default(uuid()) @db.Uuid
+  actorId    String?       @db.Uuid
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime      @default(now())
+  actor      PlatformUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([createdAt])
+  @@schema("platform")
+}
+
+model Specialization {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  nameNormalized String   @unique
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([active])
+  @@index([name])
+  @@schema("platform")
+}
+
+model Qualification {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  nameNormalized String   @unique
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([active])
+  @@index([name])
+  @@schema("platform")
+}
+
+/// Routes public tracking tokens to the correct tenant without schema scanning.
+model TrackingTokenIndex {
+  tokenHash             String    @id @map("token_hash")
+  tenantId              String    @map("tenant_id") @db.Uuid
+  tenantTokenReference  String    @map("tenant_token_reference") @db.Uuid
+  expiresAt             DateTime  @map("expires_at")
+  revokedAt             DateTime? @map("revoked_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@map("tracking_token_index")
+  @@schema("platform")
+}
+
+/// Claim index for cross-process SMS dispatch (no PII / message body).
+model SmsDispatchIndex {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  tenantOutboxId String    @map("tenant_outbox_id") @db.Uuid
+  status         String    @default("PENDING")
+  nextAttemptAt  DateTime  @default(now()) @map("next_attempt_at")
+  claimedUntil   DateTime? @map("claimed_until")
+  claimedBy      String?   @map("claimed_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, tenantOutboxId])
+  @@index([status, nextAttemptAt])
+  @@map("sms_dispatch_index")
   @@schema("platform")
 }

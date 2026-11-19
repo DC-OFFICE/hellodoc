@@ -1,0 +1,212 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { api, ApiError } from '@/lib/api';
+import type { ConsultationSession, Doctor } from '@/lib/clinic-types';
+import { SessionEmptyState } from '../components/SessionEmptyState';
+import { SessionsCalendarView } from '../components/SessionsCalendarView';
+import { SessionsDataTable, type SessionRow } from '../components/SessionsDataTable';
+import { SessionsPageHeader } from '../components/SessionsPageHeader';
+import {
+  SessionsSummaryCards,
+  type SessionsSummary,
+} from '../components/SessionsSummaryCards';
+import { SessionsToolbar } from '../components/SessionsToolbar';
+import { useSessionFilters } from '../hooks/useSessionFilters';
+import {
+  addDaysIso,
+  clinicTodayIso,
+  startOfWeekIso,
+} from '../utils/session-formatters';
+
+export function SessionsPage() {
+  const { filters, patch, reset } = useSessionFilters();
+  const [items, setItems] = useState<ConsultationSession[]>([]);
+  const [summarySource, setSummarySource] = useState<ConsultationSession[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [weekStart, setWeekStart] = useState(() => startOfWeekIso(clinicTodayIso()));
+  const [hasEverLoaded, setHasEverLoaded] = useState(false);
+
+  const doctorMap = useMemo(() => {
+    const map = new Map<string, Doctor>();
+    for (const d of doctors) map.set(d.id, d);
+    return map;
+  }, [doctors]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const today = clinicTodayIso();
+      const listParams = new URLSearchParams({
+        status: filters.status,
+        limit: '200',
+        from: filters.from,
+        to: filters.to,
+      });
+      if (filters.doctorId) listParams.set('doctorId', filters.doctorId);
+
+      const summaryParams = new URLSearchParams({
+        status: 'ALL',
+        limit: '200',
+        from: today,
+        to: addDaysIso(today, 90),
+      });
+
+      const [sessions, doctorList, summarySessions] = await Promise.all([
+        api<{ items: ConsultationSession[] }>(`/clinic/sessions?${listParams}`),
+        api<{ items: Doctor[] }>('/clinic/doctors?status=ALL&limit=100'),
+        api<{ items: ConsultationSession[] }>(`/clinic/sessions?${summaryParams}`),
+      ]);
+      setItems(sessions.items);
+      setDoctors(doctorList.items);
+      setSummarySource(summarySessions.items);
+      setHasEverLoaded(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load sessions');
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.status, filters.from, filters.to, filters.doctorId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (filters.view === 'calendar') {
+      setWeekStart(startOfWeekIso(filters.from || clinicTodayIso()));
+    }
+  }, [filters.view, filters.from]);
+
+  const filteredRows: SessionRow[] = useMemo(() => {
+    const q = filters.q.trim().toLowerCase();
+    return items
+      .filter((session) => {
+        if (!q) return true;
+        return (session.doctorDisplayName ?? '').toLowerCase().includes(q);
+      })
+      .map((session) => ({
+        ...session,
+        specialization: doctorMap.get(session.doctorId)?.specialization ?? null,
+      }));
+  }, [items, filters.q, doctorMap]);
+
+  const summary: SessionsSummary | null = useMemo(() => {
+    if (!hasEverLoaded) return null;
+    const today = clinicTodayIso();
+    const now = Date.now();
+    let todayCount = 0;
+    let upcomingCount = 0;
+    let scheduledCapacity = 0;
+    let cancelledCount = 0;
+    for (const s of summarySource) {
+      if (s.status === 'CANCELLED') {
+        cancelledCount += 1;
+        continue;
+      }
+      if (s.status !== 'SCHEDULED') continue;
+      if (s.localDate === today) todayCount += 1;
+      if (new Date(s.startAt).getTime() > now) {
+        upcomingCount += 1;
+        scheduledCapacity += s.capacity;
+      }
+    }
+    return {
+      todayCount,
+      upcomingCount,
+      scheduledCapacity,
+      cancelledCount,
+      rangeLabel: `Next 90 days from ${today}`,
+    };
+  }, [summarySource, hasEverLoaded]);
+
+  const calendarSessions = useMemo(() => {
+    const weekEnd = addDaysIso(weekStart, 6);
+    return filteredRows.filter(
+      (s) => s.localDate >= weekStart && s.localDate <= weekEnd,
+    );
+  }, [filteredRows, weekStart]);
+
+  const pageIndex = Math.max(0, filters.page - 1);
+
+  return (
+    <div className="space-y-5">
+      <SessionsPageHeader />
+      <SessionsSummaryCards summary={summary} loading={loading && !hasEverLoaded} />
+
+      <Card className="shadow-none">
+        <CardContent className="space-y-4 pt-5">
+          <SessionsToolbar
+            filters={filters}
+            doctors={doctors.filter((d) => d.status === 'ACTIVE' || d.id === filters.doctorId)}
+            onChange={(next) => patch(next)}
+            onApply={() => void load()}
+            onReset={reset}
+          />
+
+          {error ? (
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>Unable to load sessions</AlertTitle>
+              <AlertDescription className="flex flex-wrap items-center gap-3">
+                <span>{error}</span>
+                <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {loading ? (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-2/3" />
+            </div>
+          ) : null}
+
+          {!loading && !error && filteredRows.length === 0 ? (
+            <SessionEmptyState
+              variant={hasEverLoaded && items.length === 0 && !filters.q ? 'empty' : 'filtered'}
+              onReset={reset}
+            />
+          ) : null}
+
+          {!loading && !error && filteredRows.length > 0 && filters.view === 'list' ? (
+            <SessionsDataTable
+              data={filteredRows}
+              pageIndex={pageIndex}
+              pageSize={filters.pageSize}
+              onPageChange={(page) => patch({ page }, { resetPage: false })}
+              onPageSizeChange={(pageSize) => patch({ pageSize, page: 1 })}
+              onCancel={async (sessionId, reason) => {
+                await api(`/clinic/sessions/${sessionId}/cancel`, {
+                  method: 'POST',
+                  json: { reason },
+                });
+                await load();
+              }}
+            />
+          ) : null}
+
+          {!loading && !error && filters.view === 'calendar' ? (
+            filteredRows.length === 0 ? null : (
+              <SessionsCalendarView
+                sessions={calendarSessions}
+                weekStart={weekStart}
+                onWeekChange={setWeekStart}
+              />
+            )
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
