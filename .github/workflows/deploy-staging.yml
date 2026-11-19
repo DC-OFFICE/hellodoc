@@ -1,11 +1,13 @@
 name: Deploy CapRover staging
 
-# Creates/pushes images to GHCR, then asks CapRover to pull them.
+# CapRover builds images on the server from a source tarball (Dockerfile).
+# This avoids private GHCR pulls (org packages cannot be made public → "denied").
+#
 # Prerequisites (one-time in CapRover + GitHub):
-#   1. Apps hellodoc-staging-api and hellodoc-staging-web already exist and are configured.
+#   1. Apps hellodoc-staging-api and hellodoc-staging-web exist and are configured.
 #   2. Each app has an App Token enabled (Deployment tab).
-#   3. CapRover can pull from ghcr.io (add registry credentials if the package is private).
-#   4. GitHub secrets/vars listed at the bottom of this file are set.
+#   3. Web app App Configs → Dockerfile Build Args: VITE_API_BASE_URL=<staging API /api URL>
+#   4. GitHub secrets/vars below are set.
 #
 # Never put DATABASE_URL, encryption keys, or CapRover dashboard passwords in the workflow YAML.
 
@@ -19,6 +21,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/deploy-staging.yml'
+      - '.dockerignore'
 
 concurrency:
   group: deploy-staging
@@ -26,12 +29,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_API: ghcr.io/${{ github.repository_owner }}/hellodoc-staging-api
-  IMAGE_WEB: ghcr.io/${{ github.repository_owner }}/hellodoc-staging-web
 
 jobs:
   verify:
@@ -55,10 +52,10 @@ jobs:
         run: npm run build -w @hellodoc/web
 
   build-and-deploy:
-    name: Build images & deploy CapRover
+    name: Pack & deploy CapRover
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,70 +85,113 @@ jobs:
             exit 1
           fi
 
-      - name: Lowercase image names
-        id: image
+      # Bake staging API URL into the web Dockerfile ARG default so CapRover
+      # builds work even if App Config build-args UI is missing.
+      - name: Bake VITE_API_BASE_URL into web Dockerfile
+        env:
+          STAGING_VITE_API_BASE_URL: ${{ vars.STAGING_VITE_API_BASE_URL }}
         run: |
-          owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
-          sha='${{ github.sha }}'
-          echo "api=ghcr.io/${owner}/hellodoc-staging-api:${sha}" >> "$GITHUB_OUTPUT"
-          echo "api_latest=ghcr.io/${owner}/hellodoc-staging-api:staging" >> "$GITHUB_OUTPUT"
-          echo "web=ghcr.io/${owner}/hellodoc-staging-web:${sha}" >> "$GITHUB_OUTPUT"
-          echo "web_latest=ghcr.io/${owner}/hellodoc-staging-web:staging" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import os, pathlib
+          url = os.environ["STAGING_VITE_API_BASE_URL"].strip()
+          path = pathlib.Path("deploy/caprover/Dockerfile.web")
+          text = path.read_text(encoding="utf-8")
+          old = "ARG VITE_API_BASE_URL\n"
+          new = f"ARG VITE_API_BASE_URL={url}\n"
+          if old not in text:
+              raise SystemExit("Expected ARG VITE_API_BASE_URL line missing in Dockerfile.web")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          print(f"Dockerfile.web ARG default set for CapRover build ({url})")
+          PY
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack API deploy tarball
+        run: |
+          cp deploy/caprover/captain-definition.api captain-definition
+          tar -cf hellodoc-api.tar \
+            --exclude=node_modules \
+            --exclude=.git \
+            --exclude=apps/web/dist \
+            --exclude=apps/web/test-results \
+            --exclude=apps/api/dist \
+            captain-definition \
+            deploy \
+            apps \
+            package.json \
+            package-lock.json \
+            .dockerignore
+          ls -lh hellodoc-api.tar
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Pack web deploy tarball
+        run: |
+          cp deploy/caprover/captain-definition.web captain-definition
+          tar -cf hellodoc-web.tar \
+            --exclude=node_modules \
+            --exclude=.git \
+            --exclude=apps/web/dist \
+            --exclude=apps/web/test-results \
+            --exclude=apps/api/dist \
+            captain-definition \
+            deploy \
+            apps \
+            package.json \
+            package-lock.json \
+            .dockerignore
+          ls -lh hellodoc-web.tar
 
-      - name: Build & push API image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/caprover/Dockerfile.api
-          push: true
-          tags: |
-            ${{ steps.image.outputs.api }}
-            ${{ steps.image.outputs.api_latest }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build & push web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/caprover/Dockerfile.web
-          push: true
-          tags: |
-            ${{ steps.image.outputs.web }}
-            ${{ steps.image.outputs.web_latest }}
-          build-args: |
-            VITE_API_BASE_URL=${{ vars.STAGING_VITE_API_BASE_URL }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Deploy API to CapRover
+      - name: Deploy API to CapRover (server-side Docker build)
         uses: caprover/deploy-from-github@v2
         with:
           server: ${{ secrets.CAPROVER_SERVER }}
           app: hellodoc-staging-api
           token: ${{ secrets.CAPROVER_APP_TOKEN_API }}
-          image: ${{ steps.image.outputs.api }}
+          tar-file: hellodoc-api.tar
 
-      - name: Deploy web to CapRover
+      - name: Deploy web to CapRover (server-side Docker build)
         uses: caprover/deploy-from-github@v2
         with:
           server: ${{ secrets.CAPROVER_SERVER }}
           app: hellodoc-staging-web
           token: ${{ secrets.CAPROVER_APP_TOKEN_WEB }}
-          image: ${{ steps.image.outputs.web }}
+          tar-file: hellodoc-web.tar
 
-      - name: Reminder — verify health manually
+      - name: Wait for CapRover builds to finish
+        run: sleep 90
+
+      - name: Verify staging is live
+        env:
+          API_BASE: ${{ vars.STAGING_VITE_API_BASE_URL }}
+          WEB_URL: ${{ vars.STAGING_WEB_URL }}
         run: |
-          echo "CapRover accepted the deploys. Confirm in the dashboard that both apps are Running,"
-          echo "then open /api/health/live and the SPA /login over HTTPS."
-          echo "Do not paste secrets into chat."
+          set -euo pipefail
+          if [ -z "${WEB_URL:-}" ]; then
+            WEB_URL=$(echo "$API_BASE" | sed -E 's|-api\.|-web.|; s|/api/?$||')
+          fi
+          echo "Checking web: $WEB_URL"
+          echo "Checking API:  $API_BASE/health/live"
+
+          ok=0
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            web_home=$(curl -fsS --max-time 30 "$WEB_URL/" || true)
+            if echo "$web_home" | grep -qi 'Your app will be here'; then
+              echo "Attempt $i: still CapRover placeholder; waiting…"
+              sleep 30
+              continue
+            fi
+            login_code=$(curl -sS -o /tmp/login.html -w "%{http_code}" --max-time 30 "$WEB_URL/login" || echo "000")
+            live_code=$(curl -sS -o /tmp/live.json -w "%{http_code}" --max-time 30 "$API_BASE/health/live" || echo "000")
+            echo "Attempt $i: /login=$login_code health/live=$live_code"
+            if [ "$login_code" = "200" ] && [ "$live_code" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 30
+          done
+
+          if [ "$ok" != "1" ]; then
+            echo "::error::Staging smoke failed after CapRover tar deploy. Check CapRover App Logs / Build Logs."
+            head -c 400 /tmp/login.html || true
+            head -c 400 /tmp/live.json || true
+            exit 1
+          fi
+
+          echo "Staging smoke OK: web SPA + /login + API /health/live"
