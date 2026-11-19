@@ -1,18 +1,9 @@
 name: Deploy CapRover staging
 
-# Build images on GitHub Actions, push to CapRover's own registry
-# (registry.straightline.cloud:996), then CapRover pulls from that registry.
-#
-# Why not GHCR: org packages are private and cannot be made Public → CapRover
-# gets "denied". Why not tar build: CapRover accepted deploys but left empty
-# build logs / stayed on placeholder.
-#
-# Prerequisites (one-time):
-#   1. CapRover apps hellodoc-staging-api / hellodoc-staging-web configured
-#      (API port 4000, web port 80, HTTPS, env vars).
-#   2. App Tokens enabled; GitHub secrets below set.
-#   3. CapRover Cluster → Docker Registries already has captain @
-#      registry.straightline.cloud:996 as default push registry.
+# Build/push images to GHCR, then CapRover pulls them.
+# CapRover must have an editable ghcr.io registry row:
+#   Username = GitHub user, Password = PAT (read:packages) + SSO for DC-OFFICE,
+#   Domain = ghcr.io, Image Prefix = dc-office
 #
 # Never put DATABASE_URL / encryption keys in this YAML.
 
@@ -34,6 +25,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   verify:
@@ -57,7 +49,7 @@ jobs:
         run: npm run build -w @hellodoc/web
 
   build-and-deploy:
-    name: Build & deploy CapRover registry
+    name: Build images & deploy CapRover
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -70,14 +62,10 @@ jobs:
           CAPROVER_SERVER: ${{ secrets.CAPROVER_SERVER }}
           CAPROVER_APP_TOKEN_API: ${{ secrets.CAPROVER_APP_TOKEN_API }}
           CAPROVER_APP_TOKEN_WEB: ${{ secrets.CAPROVER_APP_TOKEN_WEB }}
-          CAPROVER_REGISTRY: ${{ secrets.CAPROVER_REGISTRY }}
-          CAPROVER_REGISTRY_USER: ${{ secrets.CAPROVER_REGISTRY_USER }}
-          CAPROVER_REGISTRY_PASSWORD: ${{ secrets.CAPROVER_REGISTRY_PASSWORD }}
           STAGING_VITE_API_BASE_URL: ${{ vars.STAGING_VITE_API_BASE_URL }}
         run: |
           missing=0
-          for name in CAPROVER_SERVER CAPROVER_APP_TOKEN_API CAPROVER_APP_TOKEN_WEB \
-            CAPROVER_REGISTRY CAPROVER_REGISTRY_USER CAPROVER_REGISTRY_PASSWORD; do
+          for name in CAPROVER_SERVER CAPROVER_APP_TOKEN_API CAPROVER_APP_TOKEN_WEB; do
             eval "val=\${$name}"
             if [ -z "$val" ]; then
               echo "Missing secret: $name"
@@ -89,30 +77,26 @@ jobs:
             missing=1
           fi
           if [ "$missing" -ne 0 ]; then
-            echo "See docs/CAPROVER-STAGING.md → CI/CD secrets (CapRover registry)."
+            echo "See docs/CAPROVER-STAGING.md"
             exit 1
           fi
 
-      - name: Image tags
+      - name: Lowercase image names
         id: image
-        env:
-          CAPROVER_REGISTRY: ${{ secrets.CAPROVER_REGISTRY }}
         run: |
-          # Expect CAPROVER_REGISTRY like: registry.straightline.cloud:996
-          # CapRover image prefix for self-hosted registry is usually "captain"
-          reg="${CAPROVER_REGISTRY}"
+          owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           sha='${{ github.sha }}'
-          echo "api=${reg}/captain/hellodoc-staging-api:${sha}" >> "$GITHUB_OUTPUT"
-          echo "api_latest=${reg}/captain/hellodoc-staging-api:staging" >> "$GITHUB_OUTPUT"
-          echo "web=${reg}/captain/hellodoc-staging-web:${sha}" >> "$GITHUB_OUTPUT"
-          echo "web_latest=${reg}/captain/hellodoc-staging-web:staging" >> "$GITHUB_OUTPUT"
+          echo "api=ghcr.io/${owner}/hellodoc-staging-api:${sha}" >> "$GITHUB_OUTPUT"
+          echo "api_latest=ghcr.io/${owner}/hellodoc-staging-api:staging" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/${owner}/hellodoc-staging-web:${sha}" >> "$GITHUB_OUTPUT"
+          echo "web_latest=ghcr.io/${owner}/hellodoc-staging-web:staging" >> "$GITHUB_OUTPUT"
 
-      - name: Login to CapRover registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.CAPROVER_REGISTRY }}
-          username: ${{ secrets.CAPROVER_REGISTRY_USER }}
-          password: ${{ secrets.CAPROVER_REGISTRY_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -175,7 +159,7 @@ jobs:
           for i in $(seq 1 20); do
             web_home=$(curl -fsS --max-time 30 "$WEB_URL/" || true)
             if echo "$web_home" | grep -qi 'Your app will be here'; then
-              echo "Attempt $i: still CapRover placeholder; waiting…"
+              echo "Attempt $i: still CapRover placeholder — CapRover could not pull GHCR (check Cluster ghcr.io registry: prefix dc-office, PAT + SSO)."
               sleep 20
               continue
             fi
@@ -190,7 +174,7 @@ jobs:
           done
 
           if [ "$ok" != "1" ]; then
-            echo "::error::Staging smoke failed. CapRover Build Logs should show Pulling registry.straightline.cloud:996/captain/..."
+            echo "::error::Staging smoke failed. CapRover Build Logs must show a successful pull of ghcr.io/dc-office/hellodoc-staging-…"
             [ -f /tmp/login.html ] && head -c 400 /tmp/login.html || true
             [ -f /tmp/live.json ] && head -c 400 /tmp/live.json || true
             exit 1

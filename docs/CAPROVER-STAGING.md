@@ -220,25 +220,21 @@ Workflows in `.github/workflows/`:
 | Workflow | When | What |
 | --- | --- | --- |
 | `ci.yml` | PR + push to `main`/`master` | `npm ci`, Prisma generate, typecheck, unit tests, build |
-| `deploy-staging.yml` | push to `main`/`master` (app paths) or **Run workflow** | CI gates → build/push to **CapRover registry** → CapRover image deploy |
+| `deploy-staging.yml` | push to `main`/`master` (app paths) or **Run workflow** | CI gates → build/push **GHCR** → CapRover image deploy |
 
 ### One-time GitHub setup
 
 1. Create CapRover apps `hellodoc-staging-api` and `hellodoc-staging-web` (and DB) as above.
 2. In each app’s **Deployment** tab → enable **App Token** → copy token.
-3. CapRover → **Cluster** → Docker Registries → find `captain` @ `registry.straightline.cloud:996` → **Edit** → copy the registry **password** (do not paste it into chat).
-4. In GitHub repo → **Settings → Secrets and variables → Actions**:
+3. In GitHub repo → **Settings → Secrets and variables → Actions**:
 
-**Secrets**
+**Secrets** (only these three — do **not** add CapRover self-hosted registry secrets; that registry is not editable in CapRover)
 
 | Name | Value |
 | --- | --- |
 | `CAPROVER_SERVER` | `https://captain.straightline.cloud` |
 | `CAPROVER_APP_TOKEN_API` | token from `hellodoc-staging-api` |
 | `CAPROVER_APP_TOKEN_WEB` | token from `hellodoc-staging-web` |
-| `CAPROVER_REGISTRY` | `registry.straightline.cloud:996` |
-| `CAPROVER_REGISTRY_USER` | `captain` |
-| `CAPROVER_REGISTRY_PASSWORD` | password from CapRover Cluster → that registry row |
 
 **Variables**
 
@@ -246,19 +242,22 @@ Workflows in `.github/workflows/`:
 | --- | --- |
 | `STAGING_VITE_API_BASE_URL` | `https://hellodoc-staging-api.straightline.cloud/api` |
 
-5. Push the updated workflow to `main`, or **Actions → Deploy CapRover staging → Run workflow**.
-6. CapRover Build Logs should show `Pulling this image: registry.straightline.cloud:996/captain/hellodoc-staging-…` then success.
-7. Confirm `/` is **not** “Your app will be here!”, `/login` returns **200**, and `/api/health/live` returns JSON.
+4. CapRover → **Cluster** → edit an **editable** `ghcr.io` row (not `captain` @ `:996`):
+
+| Field | Value |
+| --- | --- |
+| Username | your GitHub username |
+| Password | PAT with `read:packages` + **SSO Authorize** for `DC-OFFICE` |
+| Domain | `ghcr.io` |
+| Image Prefix | `dc-office` |
+
+Leave Default Push Registry as `captain @ registry.straightline.cloud:996` (or disabled). Do not set default push to GHCR.
+
+5. Push to `main` or **Actions → Deploy CapRover staging → Run workflow**.
+6. CapRover Build Logs should show `Pulling this image: ghcr.io/dc-office/hellodoc-staging-…` then success (not `denied`, not empty).
+7. Confirm `/` is not CapRover placeholder, `/login` is **200**, `/api/health/live` is JSON.
 
 App env vars (`DATABASE_URL`, encryption keys, MFA, CORS) stay in CapRover App Configs — not in GitHub.
-
-### Why this registry path?
-
-| Approach | Result here |
-| --- | --- |
-| Private GHCR pull | CapRover `denied` (packages cannot be Public) |
-| Source tar build on CapRover | Deploy version created, **empty build logs**, still placeholder |
-| Push to CapRover’s own registry | CapRover already trusts `captain` @ `registry.straightline.cloud:996` |
 
 ## Files added in this repo
 
