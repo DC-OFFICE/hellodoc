@@ -1,15 +1,20 @@
 name: Deploy CapRover staging
 
-# CapRover builds images on the server from a source tarball (Dockerfile).
-# This avoids private GHCR pulls (org packages cannot be made public → "denied").
+# Build images on GitHub Actions, push to CapRover's own registry
+# (registry.straightline.cloud:996), then CapRover pulls from that registry.
 #
-# Prerequisites (one-time in CapRover + GitHub):
-#   1. Apps hellodoc-staging-api and hellodoc-staging-web exist and are configured.
-#   2. Each app has an App Token enabled (Deployment tab).
-#   3. Web app App Configs → Dockerfile Build Args: VITE_API_BASE_URL=<staging API /api URL>
-#   4. GitHub secrets/vars below are set.
+# Why not GHCR: org packages are private and cannot be made Public → CapRover
+# gets "denied". Why not tar build: CapRover accepted deploys but left empty
+# build logs / stayed on placeholder.
 #
-# Never put DATABASE_URL, encryption keys, or CapRover dashboard passwords in the workflow YAML.
+# Prerequisites (one-time):
+#   1. CapRover apps hellodoc-staging-api / hellodoc-staging-web configured
+#      (API port 4000, web port 80, HTTPS, env vars).
+#   2. App Tokens enabled; GitHub secrets below set.
+#   3. CapRover Cluster → Docker Registries already has captain @
+#      registry.straightline.cloud:996 as default push registry.
+#
+# Never put DATABASE_URL / encryption keys in this YAML.
 
 on:
   workflow_dispatch:
@@ -52,7 +57,7 @@ jobs:
         run: npm run build -w @hellodoc/web
 
   build-and-deploy:
-    name: Pack & deploy CapRover
+    name: Build & deploy CapRover registry
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -65,10 +70,14 @@ jobs:
           CAPROVER_SERVER: ${{ secrets.CAPROVER_SERVER }}
           CAPROVER_APP_TOKEN_API: ${{ secrets.CAPROVER_APP_TOKEN_API }}
           CAPROVER_APP_TOKEN_WEB: ${{ secrets.CAPROVER_APP_TOKEN_WEB }}
+          CAPROVER_REGISTRY: ${{ secrets.CAPROVER_REGISTRY }}
+          CAPROVER_REGISTRY_USER: ${{ secrets.CAPROVER_REGISTRY_USER }}
+          CAPROVER_REGISTRY_PASSWORD: ${{ secrets.CAPROVER_REGISTRY_PASSWORD }}
           STAGING_VITE_API_BASE_URL: ${{ vars.STAGING_VITE_API_BASE_URL }}
         run: |
           missing=0
-          for name in CAPROVER_SERVER CAPROVER_APP_TOKEN_API CAPROVER_APP_TOKEN_WEB; do
+          for name in CAPROVER_SERVER CAPROVER_APP_TOKEN_API CAPROVER_APP_TOKEN_WEB \
+            CAPROVER_REGISTRY CAPROVER_REGISTRY_USER CAPROVER_REGISTRY_PASSWORD; do
             eval "val=\${$name}"
             if [ -z "$val" ]; then
               echo "Missing secret: $name"
@@ -77,85 +86,78 @@ jobs:
           done
           if [ -z "$STAGING_VITE_API_BASE_URL" ]; then
             echo "Missing repository variable: STAGING_VITE_API_BASE_URL"
-            echo "Example: https://hellodoc-staging-api.straightline.cloud/api"
             missing=1
           fi
           if [ "$missing" -ne 0 ]; then
-            echo "Create CapRover apps + tokens first, then add GitHub secrets/vars (see docs/CAPROVER-STAGING.md)."
+            echo "See docs/CAPROVER-STAGING.md → CI/CD secrets (CapRover registry)."
             exit 1
           fi
 
-      # Bake staging API URL into the web Dockerfile ARG default so CapRover
-      # builds work even if App Config build-args UI is missing.
-      - name: Bake VITE_API_BASE_URL into web Dockerfile
+      - name: Image tags
+        id: image
         env:
-          STAGING_VITE_API_BASE_URL: ${{ vars.STAGING_VITE_API_BASE_URL }}
+          CAPROVER_REGISTRY: ${{ secrets.CAPROVER_REGISTRY }}
         run: |
-          python3 - <<'PY'
-          import os, pathlib
-          url = os.environ["STAGING_VITE_API_BASE_URL"].strip()
-          path = pathlib.Path("deploy/caprover/Dockerfile.web")
-          text = path.read_text(encoding="utf-8")
-          old = "ARG VITE_API_BASE_URL\n"
-          new = f"ARG VITE_API_BASE_URL={url}\n"
-          if old not in text:
-              raise SystemExit("Expected ARG VITE_API_BASE_URL line missing in Dockerfile.web")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          print(f"Dockerfile.web ARG default set for CapRover build ({url})")
-          PY
+          # Expect CAPROVER_REGISTRY like: registry.straightline.cloud:996
+          # CapRover image prefix for self-hosted registry is usually "captain"
+          reg="${CAPROVER_REGISTRY}"
+          sha='${{ github.sha }}'
+          echo "api=${reg}/captain/hellodoc-staging-api:${sha}" >> "$GITHUB_OUTPUT"
+          echo "api_latest=${reg}/captain/hellodoc-staging-api:staging" >> "$GITHUB_OUTPUT"
+          echo "web=${reg}/captain/hellodoc-staging-web:${sha}" >> "$GITHUB_OUTPUT"
+          echo "web_latest=${reg}/captain/hellodoc-staging-web:staging" >> "$GITHUB_OUTPUT"
 
-      - name: Pack API deploy tarball
-        run: |
-          cp deploy/caprover/captain-definition.api captain-definition
-          tar -cf hellodoc-api.tar \
-            --exclude=node_modules \
-            --exclude=.git \
-            --exclude=apps/web/dist \
-            --exclude=apps/web/test-results \
-            --exclude=apps/api/dist \
-            captain-definition \
-            deploy \
-            apps \
-            package.json \
-            package-lock.json \
-            .dockerignore
-          ls -lh hellodoc-api.tar
+      - name: Login to CapRover registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.CAPROVER_REGISTRY }}
+          username: ${{ secrets.CAPROVER_REGISTRY_USER }}
+          password: ${{ secrets.CAPROVER_REGISTRY_PASSWORD }}
 
-      - name: Pack web deploy tarball
-        run: |
-          cp deploy/caprover/captain-definition.web captain-definition
-          tar -cf hellodoc-web.tar \
-            --exclude=node_modules \
-            --exclude=.git \
-            --exclude=apps/web/dist \
-            --exclude=apps/web/test-results \
-            --exclude=apps/api/dist \
-            captain-definition \
-            deploy \
-            apps \
-            package.json \
-            package-lock.json \
-            .dockerignore
-          ls -lh hellodoc-web.tar
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Deploy API to CapRover (server-side Docker build)
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/caprover/Dockerfile.api
+          push: true
+          tags: |
+            ${{ steps.image.outputs.api }}
+            ${{ steps.image.outputs.api_latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/caprover/Dockerfile.web
+          push: true
+          tags: |
+            ${{ steps.image.outputs.web }}
+            ${{ steps.image.outputs.web_latest }}
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.STAGING_VITE_API_BASE_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy API to CapRover
         uses: caprover/deploy-from-github@v2
         with:
           server: ${{ secrets.CAPROVER_SERVER }}
           app: hellodoc-staging-api
           token: ${{ secrets.CAPROVER_APP_TOKEN_API }}
-          tar-file: hellodoc-api.tar
+          image: ${{ steps.image.outputs.api }}
 
-      - name: Deploy web to CapRover (server-side Docker build)
+      - name: Deploy web to CapRover
         uses: caprover/deploy-from-github@v2
         with:
           server: ${{ secrets.CAPROVER_SERVER }}
           app: hellodoc-staging-web
           token: ${{ secrets.CAPROVER_APP_TOKEN_WEB }}
-          tar-file: hellodoc-web.tar
-
-      - name: Wait for CapRover builds to finish
-        run: sleep 90
+          image: ${{ steps.image.outputs.web }}
 
       - name: Verify staging is live
         env:
@@ -170,11 +172,11 @@ jobs:
           echo "Checking API:  $API_BASE/health/live"
 
           ok=0
-          for i in 1 2 3 4 5 6 7 8 9 10; do
+          for i in $(seq 1 20); do
             web_home=$(curl -fsS --max-time 30 "$WEB_URL/" || true)
             if echo "$web_home" | grep -qi 'Your app will be here'; then
               echo "Attempt $i: still CapRover placeholder; waiting…"
-              sleep 30
+              sleep 20
               continue
             fi
             login_code=$(curl -sS -o /tmp/login.html -w "%{http_code}" --max-time 30 "$WEB_URL/login" || echo "000")
@@ -184,13 +186,13 @@ jobs:
               ok=1
               break
             fi
-            sleep 30
+            sleep 20
           done
 
           if [ "$ok" != "1" ]; then
-            echo "::error::Staging smoke failed after CapRover tar deploy. Check CapRover App Logs / Build Logs."
-            head -c 400 /tmp/login.html || true
-            head -c 400 /tmp/live.json || true
+            echo "::error::Staging smoke failed. CapRover Build Logs should show Pulling registry.straightline.cloud:996/captain/..."
+            [ -f /tmp/login.html ] && head -c 400 /tmp/login.html || true
+            [ -f /tmp/live.json ] && head -c 400 /tmp/live.json || true
             exit 1
           fi
 

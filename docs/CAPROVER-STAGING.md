@@ -220,13 +220,14 @@ Workflows in `.github/workflows/`:
 | Workflow | When | What |
 | --- | --- | --- |
 | `ci.yml` | PR + push to `main`/`master` | `npm ci`, Prisma generate, typecheck, unit tests, build |
-| `deploy-staging.yml` | push to `main`/`master` (app paths) or **Run workflow** | CI gates → source tarball → CapRover **builds Dockerfiles on the server** |
+| `deploy-staging.yml` | push to `main`/`master` (app paths) or **Run workflow** | CI gates → build/push to **CapRover registry** → CapRover image deploy |
 
 ### One-time GitHub setup
 
 1. Create CapRover apps `hellodoc-staging-api` and `hellodoc-staging-web` (and DB) as above.
 2. In each app’s **Deployment** tab → enable **App Token** → copy token.
-3. In GitHub repo → **Settings → Secrets and variables → Actions**:
+3. CapRover → **Cluster** → Docker Registries → find `captain` @ `registry.straightline.cloud:996` → **Edit** → copy the registry **password** (do not paste it into chat).
+4. In GitHub repo → **Settings → Secrets and variables → Actions**:
 
 **Secrets**
 
@@ -235,6 +236,9 @@ Workflows in `.github/workflows/`:
 | `CAPROVER_SERVER` | `https://captain.straightline.cloud` |
 | `CAPROVER_APP_TOKEN_API` | token from `hellodoc-staging-api` |
 | `CAPROVER_APP_TOKEN_WEB` | token from `hellodoc-staging-web` |
+| `CAPROVER_REGISTRY` | `registry.straightline.cloud:996` |
+| `CAPROVER_REGISTRY_USER` | `captain` |
+| `CAPROVER_REGISTRY_PASSWORD` | password from CapRover Cluster → that registry row |
 
 **Variables**
 
@@ -242,15 +246,19 @@ Workflows in `.github/workflows/`:
 | --- | --- |
 | `STAGING_VITE_API_BASE_URL` | `https://hellodoc-staging-api.straightline.cloud/api` |
 
-4. Push the updated workflow to `main`, or **Actions → Deploy CapRover staging → Run workflow**.
-5. CapRover Build Logs should show a real Docker build (not `Pulling this image: ghcr.io/...`). First build can take several minutes.
-6. Confirm `/` is **not** “Your app will be here!”, `/login` returns **200**, and `/api/health/live` returns JSON.
+5. Push the updated workflow to `main`, or **Actions → Deploy CapRover staging → Run workflow**.
+6. CapRover Build Logs should show `Pulling this image: registry.straightline.cloud:996/captain/hellodoc-staging-…` then success.
+7. Confirm `/` is **not** “Your app will be here!”, `/login` returns **200**, and `/api/health/live` returns JSON.
 
 App env vars (`DATABASE_URL`, encryption keys, MFA, CORS) stay in CapRover App Configs — not in GitHub.
 
-### Why not GHCR image pull?
+### Why this registry path?
 
-Private `ghcr.io/dc-office/...` packages + org policy (no Public visibility) caused CapRover `error from registry: denied`. Staging deploy therefore uses **tarball + Dockerfile build on CapRover**, which uses CapRover’s own registry and does not need GHCR pull credentials.
+| Approach | Result here |
+| --- | --- |
+| Private GHCR pull | CapRover `denied` (packages cannot be Public) |
+| Source tar build on CapRover | Deploy version created, **empty build logs**, still placeholder |
+| Push to CapRover’s own registry | CapRover already trusts `captain` @ `registry.straightline.cloud:996` |
 
 ## Files added in this repo
 
