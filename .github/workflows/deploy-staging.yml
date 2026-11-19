@@ -1,0 +1,157 @@
+name: Deploy CapRover staging
+
+# Creates/pushes images to GHCR, then asks CapRover to pull them.
+# Prerequisites (one-time in CapRover + GitHub):
+#   1. Apps hellodoc-staging-api and hellodoc-staging-web already exist and are configured.
+#   2. Each app has an App Token enabled (Deployment tab).
+#   3. CapRover can pull from ghcr.io (add registry credentials if the package is private).
+#   4. GitHub secrets/vars listed at the bottom of this file are set.
+#
+# Never put DATABASE_URL, encryption keys, or CapRover dashboard passwords in the workflow YAML.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'apps/**'
+      - 'deploy/caprover/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-staging.yml'
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_API: ghcr.io/${{ github.repository_owner }}/hellodoc-staging-api
+  IMAGE_WEB: ghcr.io/${{ github.repository_owner }}/hellodoc-staging-web
+
+jobs:
+  verify:
+    name: Gate — CI checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -w @hellodoc/api
+      - name: Build web (compile gate)
+        env:
+          VITE_API_BASE_URL: http://127.0.0.1:4000/api
+        run: npm run build -w @hellodoc/web
+
+  build-and-deploy:
+    name: Build images & deploy CapRover
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require CapRover secrets
+        env:
+          CAPROVER_SERVER: ${{ secrets.CAPROVER_SERVER }}
+          CAPROVER_APP_TOKEN_API: ${{ secrets.CAPROVER_APP_TOKEN_API }}
+          CAPROVER_APP_TOKEN_WEB: ${{ secrets.CAPROVER_APP_TOKEN_WEB }}
+          STAGING_VITE_API_BASE_URL: ${{ vars.STAGING_VITE_API_BASE_URL }}
+        run: |
+          missing=0
+          for name in CAPROVER_SERVER CAPROVER_APP_TOKEN_API CAPROVER_APP_TOKEN_WEB; do
+            eval "val=\${$name}"
+            if [ -z "$val" ]; then
+              echo "Missing secret: $name"
+              missing=1
+            fi
+          done
+          if [ -z "$STAGING_VITE_API_BASE_URL" ]; then
+            echo "Missing repository variable: STAGING_VITE_API_BASE_URL"
+            echo "Example: https://hellodoc-staging-api.straightline.cloud/api"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Create CapRover apps + tokens first, then add GitHub secrets/vars (see docs/CAPROVER-STAGING.md)."
+            exit 1
+          fi
+
+      - name: Lowercase image names
+        id: image
+        run: |
+          owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          sha='${{ github.sha }}'
+          echo "api=ghcr.io/${owner}/hellodoc-staging-api:${sha}" >> "$GITHUB_OUTPUT"
+          echo "api_latest=ghcr.io/${owner}/hellodoc-staging-api:staging" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/${owner}/hellodoc-staging-web:${sha}" >> "$GITHUB_OUTPUT"
+          echo "web_latest=ghcr.io/${owner}/hellodoc-staging-web:staging" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/caprover/Dockerfile.api
+          push: true
+          tags: |
+            ${{ steps.image.outputs.api }}
+            ${{ steps.image.outputs.api_latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/caprover/Dockerfile.web
+          push: true
+          tags: |
+            ${{ steps.image.outputs.web }}
+            ${{ steps.image.outputs.web_latest }}
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.STAGING_VITE_API_BASE_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy API to CapRover
+        uses: caprover/deploy-from-github@v2
+        with:
+          server: ${{ secrets.CAPROVER_SERVER }}
+          app: hellodoc-staging-api
+          token: ${{ secrets.CAPROVER_APP_TOKEN_API }}
+          image: ${{ steps.image.outputs.api }}
+
+      - name: Deploy web to CapRover
+        uses: caprover/deploy-from-github@v2
+        with:
+          server: ${{ secrets.CAPROVER_SERVER }}
+          app: hellodoc-staging-web
+          token: ${{ secrets.CAPROVER_APP_TOKEN_WEB }}
+          image: ${{ steps.image.outputs.web }}
+
+      - name: Reminder — verify health manually
+        run: |
+          echo "CapRover accepted the deploys. Confirm in the dashboard that both apps are Running,"
+          echo "then open /api/health/live and the SPA /login over HTTPS."
+          echo "Do not paste secrets into chat."

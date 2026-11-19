@@ -10,3 +10,10 @@ apps/**/src/generated/prisma/
 .DS_Store
 .vite/
 *.tsbuildinfo
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/e2e/.auth/
+.playwright-browsers/
+.pg-restore-cluster/
+.tmp/
