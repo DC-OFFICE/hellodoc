@@ -220,7 +220,7 @@ Workflows in `.github/workflows/`:
 | Workflow | When | What |
 | --- | --- | --- |
 | `ci.yml` | PR + push to `main`/`master` | `npm ci`, Prisma generate, typecheck, unit tests, build |
-| `deploy-staging.yml` | push to `main`/`master` (app paths) or **Run workflow** | Same gates → build/push GHCR images → CapRover deploy |
+| `deploy-staging.yml` | push to `main`/`master` (app paths) or **Run workflow** | CI gates → source tarball → CapRover **builds Dockerfiles on the server** |
 
 ### One-time GitHub setup
 
@@ -242,10 +242,15 @@ Workflows in `.github/workflows/`:
 | --- | --- |
 | `STAGING_VITE_API_BASE_URL` | `https://hellodoc-staging-api.straightline.cloud/api` |
 
-4. In CapRover → Cluster / Registries: add **ghcr.io** pull credentials if images are private (GitHub Packages often need a PAT or the deploy user’s read access).
-5. Push to `main` or run **Actions → Deploy CapRover staging → Run workflow**.
+4. Push the updated workflow to `main`, or **Actions → Deploy CapRover staging → Run workflow**.
+5. CapRover Build Logs should show a real Docker build (not `Pulling this image: ghcr.io/...`). First build can take several minutes.
+6. Confirm `/` is **not** “Your app will be here!”, `/login` returns **200**, and `/api/health/live` returns JSON.
 
 App env vars (`DATABASE_URL`, encryption keys, MFA, CORS) stay in CapRover App Configs — not in GitHub.
+
+### Why not GHCR image pull?
+
+Private `ghcr.io/dc-office/...` packages + org policy (no Public visibility) caused CapRover `error from registry: denied`. Staging deploy therefore uses **tarball + Dockerfile build on CapRover**, which uses CapRover’s own registry and does not need GHCR pull credentials.
 
 ## Files added in this repo
 
