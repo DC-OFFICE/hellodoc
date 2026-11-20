@@ -331,6 +331,64 @@ export class BillingService {
     return row;
   }
 
+  async getService(ctx: ClinicContext, id: string) {
+    return this.sql.withClient(async (client) => {
+      const rows = await client.query(
+        `SELECT id, code, name, description, price::text, currency, tax_classification, active, created_at, updated_at
+         FROM ${ctx.quotedSchema}.billing_services WHERE id = $1`,
+        [id],
+      );
+      if (!rows.rows[0]) fail('INVOICE_NOT_FOUND', 'Service not found', 'missing');
+      return rows.rows[0];
+    });
+  }
+
+  async deleteService(ctx: ClinicContext, id: string) {
+    return this.sql.withClient(async (client) => {
+      const existing = await client.query<{ id: string; code: string; name: string; active: boolean }>(
+        `SELECT id, code, name, active FROM ${ctx.quotedSchema}.billing_services WHERE id = $1`,
+        [id],
+      );
+      if (!existing.rows[0]) fail('INVOICE_NOT_FOUND', 'Service not found', 'missing');
+
+      // Check if referenced in historical invoices
+      const usage = await client.query<{ count: string }>(
+        `SELECT count(*)::text as count FROM ${ctx.quotedSchema}.invoice_items WHERE service_id = $1`,
+        [id],
+      );
+      const usedInInvoices = Number(usage.rows[0]?.count ?? 0) > 0;
+
+      if (usedInInvoices) {
+        await client.query(
+          `UPDATE ${ctx.quotedSchema}.billing_services SET active = FALSE, updated_at = NOW() WHERE id = $1`,
+          [id],
+        );
+        await this.auditBilling(client, ctx, 'billing.service_deactivated', 'service', id, {
+          reason: 'invoice_item_history_preserved',
+        });
+        return {
+          deleted: false,
+          deactivated: true,
+          message: 'Service is linked to historical invoices. It has been deactivated to preserve financial records.',
+        };
+      }
+
+      await client.query(
+        `DELETE FROM ${ctx.quotedSchema}.billing_services WHERE id = $1`,
+        [id],
+      );
+      await this.auditBilling(client, ctx, 'billing.service_deleted', 'service', id, {
+        code: existing.rows[0].code,
+        name: existing.rows[0].name,
+      });
+      return {
+        deleted: true,
+        deactivated: false,
+        message: 'Service deleted permanently.',
+      };
+    });
+  }
+
   async listInvoices(ctx: ClinicContext, query: ListQueryDto) {
     const limit = query.limit ?? 25;
     const offset = query.offset ?? 0;

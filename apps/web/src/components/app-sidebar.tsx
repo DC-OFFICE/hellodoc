@@ -11,6 +11,7 @@ import {
   Settings2,
   ShieldCheck,
   Stethoscope,
+  Tag,
   Users,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -45,6 +46,7 @@ const managerNav = [
   { title: 'SMS History', to: '/notifications', icon: Bell, enabled: true },
   { title: 'SMS Settings', to: '/settings/notifications', icon: Settings2, enabled: true },
   { title: 'Invoices', to: '/billing/invoices', icon: Receipt, enabled: true },
+  { title: 'Services', to: '/billing/services', icon: Tag, enabled: true },
   { title: 'Billing reports', to: '/billing/reports', icon: Receipt, enabled: true },
   { title: 'Billing settings', to: '/settings/billing', icon: Settings2, enabled: true },
   { title: 'Account security', to: '/settings/security', icon: ShieldCheck, enabled: true },
@@ -64,6 +66,7 @@ const receptionistNav = [
 
 const cashierNav = [
   { title: 'Invoices', to: '/billing/invoices', icon: Receipt, enabled: true },
+  { title: 'Services', to: '/billing/services', icon: Tag, enabled: true },
   { title: 'Payments', to: '/billing/payments', icon: Receipt, enabled: true },
   { title: 'Billing reports', to: '/billing/reports', icon: Receipt, enabled: true },
   { title: 'Account security', to: '/settings/security', icon: ShieldCheck, enabled: true },

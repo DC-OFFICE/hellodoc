@@ -26,6 +26,7 @@ import { InvoiceDetailPage } from '@/pages/invoice-detail-page';
 import { InvoiceFormPage } from '@/pages/invoice-form-page';
 import { InvoicesPage } from '@/pages/invoices-page';
 import { PaymentsPage } from '@/pages/payments-page';
+import { ServicesPage } from '@/pages/services-page';
 import { SecuritySettingsPage } from '@/pages/security-settings-page';
 import { AppointmentDetailPage } from '@/pages/appointment-detail-page';
 import { AppointmentFormPage } from '@/pages/appointment-form-page';
@@ -125,6 +126,7 @@ export default function App() {
                   <Route path="/billing/invoices" element={<InvoicesPage />} />
                   <Route path="/billing/invoices/new" element={<InvoiceFormPage />} />
                   <Route path="/billing/invoices/:id" element={<InvoiceDetailPage />} />
+                  <Route path="/billing/services" element={<ServicesPage />} />
                   <Route path="/billing/payments" element={<PaymentsPage />} />
                   <Route path="/billing/reports" element={<BillingReportsPage />} />
                   <Route path="/settings/billing" element={<BillingSettingsPage />} />
