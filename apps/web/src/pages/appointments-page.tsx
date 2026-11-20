@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  AppointmentBookingDialog,
+  type AppointmentBookingDefaults,
+} from '@/components/appointment-booking-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -13,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { TablePagination } from '@/components/ui/table-pagination';
 import { clinicTodayIso } from '@/features/sessions/utils/session-formatters';
 import { api, ApiError } from '@/lib/api';
 import type { Appointment, Doctor } from '@/lib/clinic-types';
@@ -24,6 +29,7 @@ function formatTimeRange(startAt: string | null, endAt: string | null) {
 }
 
 export function AppointmentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const today = useMemo(() => clinicTodayIso(), []);
   const [items, setItems] = useState<Appointment[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -41,9 +47,41 @@ export function AppointmentsPage() {
     q: string;
   }>({ from: today, to: today, doctorId: '', status: 'CONFIRMED', q: '' });
   const [offset, setOffset] = useState(0);
-  const limit = 25;
+  const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bookOpen, setBookOpen] = useState(false);
+  const [bookDefaults, setBookDefaults] = useState<AppointmentBookingDefaults>({});
+
+  const openBook = useCallback((defaults: AppointmentBookingDefaults = {}) => {
+    setBookDefaults(defaults);
+    setBookOpen(true);
+  }, []);
+
+  const closeBook = useCallback(
+    (open: boolean) => {
+      setBookOpen(open);
+      if (!open) {
+        setBookDefaults({});
+        const next = new URLSearchParams(searchParams);
+        next.delete('create');
+        next.delete('patientId');
+        next.delete('doctorId');
+        next.delete('sessionId');
+        setSearchParams(next, { replace: true });
+      }
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    if (searchParams.get('create') !== '1') return;
+    openBook({
+      patientId: searchParams.get('patientId') ?? undefined,
+      doctorId: searchParams.get('doctorId') ?? undefined,
+      sessionId: searchParams.get('sessionId') ?? undefined,
+    });
+  }, [searchParams, openBook]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,8 +118,6 @@ export function AppointmentsPage() {
       .catch(() => setDoctors([]));
   }, []);
 
-  const page = Math.floor(offset / limit) + 1;
-  const pageCount = Math.max(1, Math.ceil(total / limit));
 
   return (
     <div className="space-y-4">
@@ -92,9 +128,9 @@ export function AppointmentsPage() {
             Book patients into consultation sessions and manage queue numbers.
           </p>
         </div>
-        <Link to="/appointments/new">
-          <Button type="button">+ Book Appointment</Button>
-        </Link>
+        <Button type="button" onClick={() => openBook()}>
+          + Book Appointment
+        </Button>
       </div>
 
       <Card>
@@ -152,7 +188,7 @@ export function AppointmentsPage() {
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               setFrom(today);
               setTo(today);
@@ -176,7 +212,7 @@ export function AppointmentsPage() {
           {error ? (
             <div className="space-y-2">
               <p className="text-sm text-red-700">{error}</p>
-              <Button type="button" variant="outline" onClick={() => void load()}>
+              <Button type="button" variant="secondary" onClick={() => void load()}>
                 Retry
               </Button>
             </div>
@@ -184,15 +220,18 @@ export function AppointmentsPage() {
           {!loading && !error && items.length === 0 ? (
             <div className="py-10 text-center">
               <p className="text-sm text-slate-500">No appointments found for these filters.</p>
-              <Link to="/appointments/new" className="mt-3 inline-block">
-                <Button type="button" variant="secondary">
-                  Book appointment
-                </Button>
-              </Link>
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-3"
+                onClick={() => openBook()}
+              >
+                Book appointment
+              </Button>
             </div>
           ) : null}
           {items.length > 0 ? (
-            <>
+            <div className="overflow-hidden rounded-lg border border-border/80 bg-card shadow-2xs">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
@@ -236,48 +275,39 @@ export function AppointmentsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Link to={`/appointments/${item.id}`}>
-                          <Button size="sm" variant="outline" type="button">
-                            View
-                          </Button>
-                        </Link>
+                        <Button asChild size="sm" variant="ghost">
+                          <Link to={`/appointments/${item.id}`}>View</Link>
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-                <p>
-                  Showing {items.length} of {total}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={offset <= 0}
-                    onClick={() => setOffset(Math.max(0, offset - limit))}
-                  >
-                    Previous
-                  </Button>
-                  <span>
-                    Page {page} / {pageCount}
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={offset + limit >= total}
-                    onClick={() => setOffset(offset + limit)}
-                  >
-                    Next
-                  </Button>
-                </div>
+              <div className="border-t border-border/70 bg-muted/20 px-4 py-3">
+                <TablePagination
+                  total={total}
+                  limit={limit}
+                  offset={offset}
+                  pageSizeOptions={[10, 20, 30, 50]}
+                  onPageChange={setOffset}
+                  onLimitChange={(newLimit) => {
+                    setLimit(newLimit);
+                    setOffset(0);
+                  }}
+                  disabled={loading}
+                />
               </div>
-            </>
+            </div>
           ) : null}
         </CardContent>
       </Card>
+
+      <AppointmentBookingDialog
+        open={bookOpen}
+        onOpenChange={closeBook}
+        defaults={bookDefaults}
+        onBooked={() => void load()}
+      />
     </div>
   );
 }

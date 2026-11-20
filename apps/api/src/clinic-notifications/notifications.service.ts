@@ -11,6 +11,10 @@ import { AuditService } from '../audit/audit.service.js';
 import type { ClinicContext } from '../clinic-context/clinic-context.service.js';
 import { QueueService } from '../clinic-queue/queue.service.js';
 import { maskPhone } from '../clinic-patients/patient-phone.js';
+import { assertSafeClinicSchemaName, quoteIdent } from '../common/identifiers.js';
+import { PrismaPlatformService } from '../platform/prisma-platform.service.js';
+import { PlatformSmsGatewayService } from '../platform-sms/platform-sms-gateway.service.js';
+import { gatewaySkipReason } from '../platform-sms/sms-gateway.types.js';
 import { TenantSqlClient } from '../tenant-provisioning/tenant-sql.client.js';
 import {
   ListNotificationsQueryDto,
@@ -58,6 +62,8 @@ export class NotificationsService {
     private readonly audit: AuditService,
     @Inject(forwardRef(() => QueueService)) private readonly queue: QueueService,
     private readonly dispatcher: SmsDispatcherService,
+    private readonly gateway: PlatformSmsGatewayService,
+    private readonly prisma: PrismaPlatformService,
   ) {}
 
   private mapSettings(row: SettingsRow) {
@@ -141,6 +147,10 @@ export class NotificationsService {
         params.push(query.appointmentId);
         where.push(`appointment_id = $${params.length}`);
       }
+      if (query.patientId) {
+        params.push(query.patientId);
+        where.push(`patient_id = $${params.length}`);
+      }
       params.push(limit);
       const limitIdx = params.length;
       params.push(offset);
@@ -177,6 +187,28 @@ export class NotificationsService {
         offset,
       };
     });
+  }
+
+  async listForTenant(tenantId: string, query: ListNotificationsQueryDto) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { schemaName: true, clinicName: true },
+    });
+    if (!tenant) {
+      throw new NotFoundException({ code: 'CLINIC_NOT_FOUND', message: 'Clinic not found' });
+    }
+    const schemaName = assertSafeClinicSchemaName(tenant.schemaName);
+    const ctx = {
+      userId: '',
+      tenantId,
+      clinicName: tenant.clinicName,
+      schemaName,
+      quotedSchema: quoteIdent(schemaName),
+      role: 'CLINIC_MANAGER',
+      doctorId: null,
+    } satisfies ClinicContext;
+    const page = await this.list(ctx, query);
+    return { clinicName: tenant.clinicName, ...page };
   }
 
   async getOne(ctx: ClinicContext, id: string) {
@@ -350,6 +382,23 @@ export class NotificationsService {
       return 'SKIPPED';
     }
 
+    const runtime = await this.gateway.getRuntimeConfig();
+    const platformBlock = gatewaySkipReason(runtime);
+    if (platformBlock) {
+      await this.insertSkipped(client, ctx, {
+        appointmentId: row.id,
+        sessionId: row.session_id,
+        patientId: row.patient_id,
+        eventType: input.eventType,
+        dedupeKey: input.dedupeKey,
+        reason: platformBlock,
+        contactId: contact.id,
+        recipientMasked: maskPhone(contact.normalized_value),
+        recipientHash: hashRecipient(contact.normalized_value),
+      });
+      return 'SKIPPED';
+    }
+
     let trackingUrl: string | undefined;
     if (input.includeTrackingLink) {
       const issued = await this.queue.issueTrackingTokenInTx(client, {
@@ -384,7 +433,7 @@ export class NotificationsService {
     const payload = encryptPayload({
       toE164: contact.normalized_value,
       message,
-      senderId: settings.approved_sender_id || process.env.SMS_DEFAULT_SENDER_ID || 'HelloDoc',
+      senderId: runtime.senderId || settings.approved_sender_id || process.env.SMS_DEFAULT_SENDER_ID || 'HelloDoc',
       trackingUrl: trackingUrl ?? null,
     });
     if (!payload) {

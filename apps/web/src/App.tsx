@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ClinicLayout } from '@/layouts/clinic-layout';
@@ -11,8 +11,11 @@ import { DoctorsPage } from '@/pages/doctors-page';
 import { HomePage } from '@/pages/home-page';
 import { LoginPage } from '@/pages/login-page';
 import { PlatformAdminPage } from '@/pages/platform-admin-page';
+import { PlatformClinicDetailPage } from '@/pages/platform-clinic-detail-page';
+import { PlatformSmsGatewayPage } from '@/pages/platform-sms-gateway-page';
 import {
   PlatformQualificationsPage,
+  PlatformRelationshipsPage,
   PlatformSpecializationsPage,
 } from '@/pages/platform-catalog-page';
 import { RegisterPage } from '@/pages/register-page';
@@ -43,6 +46,11 @@ import { SessionsPage } from '@/pages/sessions-page';
 
 const queryClient = new QueryClient();
 
+function RedirectClinicSms() {
+  const { tenantId } = useParams();
+  return <Navigate to={`/platform-admin/clinics/${tenantId ?? ''}`} replace />;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -60,6 +68,15 @@ export default function App() {
                 <Route path="/receptionist/accept" element={<CashierAcceptPage />} />
                 <Route element={<PlatformLayout />}>
                   <Route path="/platform-admin" element={<PlatformAdminPage />} />
+                  <Route path="/platform-admin/sms-gateway" element={<PlatformSmsGatewayPage />} />
+                  <Route
+                    path="/platform-admin/clinics/:tenantId/sms"
+                    element={<RedirectClinicSms />}
+                  />
+                  <Route
+                    path="/platform-admin/clinics/:tenantId"
+                    element={<PlatformClinicDetailPage />}
+                  />
                   <Route
                     path="/platform-admin/specializations"
                     element={<PlatformSpecializationsPage />}
@@ -67,6 +84,10 @@ export default function App() {
                   <Route
                     path="/platform-admin/qualifications"
                     element={<PlatformQualificationsPage />}
+                  />
+                  <Route
+                    path="/platform-admin/relationships"
+                    element={<PlatformRelationshipsPage />}
                   />
                 </Route>
 

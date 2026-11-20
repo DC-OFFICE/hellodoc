@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -16,10 +15,14 @@ export function SessionsCalendarView({
   sessions,
   weekStart,
   onWeekChange,
+  onCreateDate,
+  onSelectSession,
 }: {
   sessions: ConsultationSession[];
   weekStart: string;
   onWeekChange: (weekStart: string) => void;
+  onCreateDate?: (date: string) => void;
+  onSelectSession?: (sessionId: string) => void;
 }) {
   const today = clinicTodayIso();
   const days = weekDates(weekStart);
@@ -90,23 +93,25 @@ export function SessionsCalendarView({
                     month: 'short',
                   })}
                 </p>
-                <Link
-                  to={`/sessions/new?date=${date}`}
-                  className="text-[10px] font-medium text-teal-700 hover:underline"
+                <button
+                  type="button"
+                  className="text-[10px] font-medium text-primary hover:underline"
+                  onClick={() => onCreateDate?.(date)}
                 >
                   + Add
-                </Link>
+                </button>
               </div>
               <div className="space-y-1.5">
                 {daySessions.length === 0 ? (
                   <p className="px-1 py-6 text-center text-[11px] text-muted-foreground">No sessions</p>
                 ) : (
                   daySessions.map((session) => (
-                    <Link
+                    <button
                       key={session.id}
-                      to={`/sessions/${session.id}`}
+                      type="button"
+                      onClick={() => onSelectSession?.(session.id)}
                       className={cn(
-                        'block rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:bg-teal-50',
+                        'block w-full rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:bg-teal-50 cursor-pointer',
                         session.status === 'CANCELLED' && 'border-red-100 bg-red-50/50 opacity-80',
                       )}
                     >
@@ -119,7 +124,7 @@ export function SessionsCalendarView({
                       <div className="mt-1">
                         <SessionStatusBadge status={session.status} />
                       </div>
-                    </Link>
+                    </button>
                   ))
                 )}
               </div>
@@ -142,19 +147,24 @@ export function SessionsCalendarView({
                     month: 'short',
                   })}
                 </p>
-                <Link to={`/sessions/new?date=${date}`} className="text-xs text-teal-700">
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => onCreateDate?.(date)}
+                >
                   + Add
-                </Link>
+                </button>
               </div>
               {daySessions.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No sessions</p>
               ) : (
                 <div className="space-y-2">
                   {daySessions.map((session) => (
-                    <Link
+                    <button
                       key={session.id}
-                      to={`/sessions/${session.id}`}
-                      className="flex items-start justify-between gap-2 rounded-md border px-3 py-2"
+                      type="button"
+                      onClick={() => onSelectSession?.(session.id)}
+                      className="flex w-full items-start justify-between gap-2 rounded-md border px-3 py-2 text-left hover:bg-muted/50 cursor-pointer"
                     >
                       <div>
                         <p className="text-sm font-medium">{session.doctorDisplayName}</p>
@@ -163,7 +173,7 @@ export function SessionsCalendarView({
                         </p>
                       </div>
                       <SessionStatusBadge status={session.status} />
-                    </Link>
+                    </button>
                   ))}
                 </div>
               )}

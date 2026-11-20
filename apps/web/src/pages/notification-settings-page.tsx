@@ -54,9 +54,6 @@ export function NotificationSettingsPage() {
   return (
     <div className="mx-auto max-w-xl space-y-5">
       <div>
-        <p className="text-xs font-semibold tracking-[0.16em] text-teal-700 uppercase">
-          Clinic / Settings
-        </p>
         <h1 className="text-2xl font-semibold text-slate-900">SMS notifications</h1>
         <p className="text-sm text-muted-foreground">
           Control which appointment events send SMS. Gateway credentials are managed by the platform.

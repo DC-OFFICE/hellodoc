@@ -1,9 +1,10 @@
 name: Deploy CapRover staging
 
 # Build/push images to GHCR, then CapRover pulls them.
-# CapRover must have an editable ghcr.io registry row:
-#   Username = GitHub user, Password = PAT (read:packages) + SSO for DC-OFFICE,
-#   Domain = ghcr.io, Image Prefix = dc-office
+# CapRover can pull images:
+#   1. Public packages: if GHCR packages are set to Public in GitHub package settings (no registry credentials needed in CapRover).
+#   2. Private packages: CapRover Cluster -> Docker Registries row for ghcr.io:
+#      Username = chamikathereal, Password = PAT (read:packages), Domain = ghcr.io, Image Prefix = chamikathereal
 #
 # Never put DATABASE_URL / encryption keys in this YAML.
 
@@ -159,7 +160,7 @@ jobs:
           for i in $(seq 1 20); do
             web_home=$(curl -fsS --max-time 30 "$WEB_URL/" || true)
             if echo "$web_home" | grep -qi 'Your app will be here'; then
-              echo "Attempt $i: still CapRover placeholder — CapRover could not pull GHCR (check Cluster ghcr.io registry: prefix dc-office, PAT + SSO)."
+              echo "Attempt $i: still CapRover placeholder — CapRover could not pull GHCR (check that packages are Public or check Cluster ghcr.io registry with matching prefix and PAT)."
               sleep 20
               continue
             fi
@@ -174,7 +175,7 @@ jobs:
           done
 
           if [ "$ok" != "1" ]; then
-            echo "::error::Staging smoke failed. CapRover Build Logs must show a successful pull of ghcr.io/dc-office/hellodoc-staging-…"
+            echo "::error::Staging smoke failed. CapRover Build Logs must show a successful pull of ghcr.io/${{ steps.image.outputs.api }}."
             [ -f /tmp/login.html ] && head -c 400 /tmp/login.html || true
             [ -f /tmp/live.json ] && head -c 400 /tmp/live.json || true
             exit 1

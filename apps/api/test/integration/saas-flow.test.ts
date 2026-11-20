@@ -154,9 +154,9 @@ describe('phase1 saas flow', () => {
     });
     assert.equal(login.status, 200);
 
-    const regs = await api('/platform/registrations', { jar: adminJar });
+    const regs = await api('/platform/registrations?status=PENDING_APPROVAL&limit=100', { jar: adminJar });
     assert.equal(regs.status, 200);
-    const pending = (regs.body as Array<{ id: string; clinicName: string; status: string }>).filter(
+    const pending = (regs.body as { items: Array<{ id: string; clinicName: string; status: string }> }).items.filter(
       (r) => r.status === 'PENDING_APPROVAL' && clinics.some((c) => c.clinicName === r.clinicName),
     );
     assert.equal(pending.length, 2);

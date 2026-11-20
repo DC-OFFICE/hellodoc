@@ -103,30 +103,40 @@ export class ClinicRegistrationService {
     return generic;
   }
 
-  async listRegistrations() {
-    return this.prisma.clinicRegistration.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        clinicName: true,
-        ownerName: true,
-        email: true,
-        mobile: true,
-        address: true,
-        status: true,
-        createdAt: true,
-        reviewedAt: true,
-        tenantId: true,
-        tenant: {
-          select: {
-            id: true,
-            status: true,
-            provisioningStatus: true,
-            schemaName: true,
+  async listRegistrations(query: { status?: string; limit?: number; offset?: number } = {}) {
+    const limit = Math.min(Math.max(query.limit ?? 10, 1), 100);
+    const offset = Math.max(query.offset ?? 0, 0);
+    const where = query.status ? { status: query.status } : {};
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.clinicRegistration.count({ where }),
+      this.prisma.clinicRegistration.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          clinicName: true,
+          ownerName: true,
+          email: true,
+          mobile: true,
+          address: true,
+          status: true,
+          createdAt: true,
+          reviewedAt: true,
+          tenantId: true,
+          tenant: {
+            select: {
+              id: true,
+              status: true,
+              provisioningStatus: true,
+              schemaName: true,
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
+    return { items, total, limit, offset };
   }
 
   async reject(registrationId: string, adminUserId: string, reason?: string) {

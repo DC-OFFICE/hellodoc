@@ -2,12 +2,18 @@ import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
 const tones: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-800 border-amber-200',
-  active: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  suspended: 'bg-slate-100 text-slate-700 border-slate-200',
-  failed: 'bg-red-50 text-red-800 border-red-200',
-  rejected: 'bg-red-50 text-red-800 border-red-200',
-  default: 'bg-teal-50 text-teal-800 border-teal-200',
+  pending:
+    'border-transparent bg-amber-500/10 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  active:
+    'border-transparent bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  suspended:
+    'border-transparent bg-muted text-muted-foreground',
+  failed:
+    'border-transparent bg-destructive/10 text-destructive',
+  rejected:
+    'border-transparent bg-destructive/10 text-destructive',
+  default:
+    'border-transparent bg-primary/10 text-primary',
 };
 
 export function Badge({
@@ -18,7 +24,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+        'inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase',
         tones[tone] ?? tones.default,
         className,
       )}

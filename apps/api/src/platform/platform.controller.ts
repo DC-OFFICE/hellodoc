@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { CurrentSession, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { ClinicRegistrationService } from '../clinic-registration/clinic-registration.service.js';
 import { TenantProvisioningService } from '../tenant-provisioning/tenant-provisioning.service.js';
+import { ListClinicsQueryDto, ListRegistrationsQueryDto } from './dto/list-query.dto.js';
 import { PrismaPlatformService } from './prisma-platform.service.js';
 
 @Controller('platform')
@@ -15,9 +16,51 @@ export class PlatformController {
 
   @Roles('platform_admin')
   @Get('clinics')
-  async listClinics() {
-    const clinics = await this.prisma.tenant.findMany({
-      orderBy: { createdAt: 'desc' },
+  async listClinics(@Query() query: ListClinicsQueryDto) {
+    const limit = Math.min(Math.max(query.limit ?? 10, 1), 100);
+    const offset = Math.max(query.offset ?? 0, 0);
+    const where = query.status ? { status: query.status } : {};
+    const [total, items, grouped, pending] = await Promise.all([
+      this.prisma.tenant.count({ where }),
+      this.prisma.tenant.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          clinicName: true,
+          slug: true,
+          schemaName: true,
+          status: true,
+          registrationStatus: true,
+          provisioningStatus: true,
+          createdAt: true,
+          registration: {
+            select: { email: true, mobile: true, ownerName: true },
+          },
+        },
+      }),
+      this.prisma.tenant.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.clinicRegistration.count({ where: { status: 'PENDING_APPROVAL' } }),
+    ]);
+    const countOf = (status: string) =>
+      grouped.find((row) => row.status === status)?._count._all ?? 0;
+    const totals = {
+      total: grouped.reduce((sum, row) => sum + row._count._all, 0),
+      pending,
+      active: countOf('ACTIVE'),
+      suspended: countOf('SUSPENDED'),
+      failed: countOf('FAILED'),
+    };
+    return { totals, items, total, limit, offset };
+  }
+
+  @Roles('platform_admin')
+  @Get('clinics/:id')
+  async getClinic(@Param('id', ParseUUIDPipe) id: string) {
+    const clinic = await this.prisma.tenant.findUnique({
+      where: { id },
       select: {
         id: true,
         clinicName: true,
@@ -28,24 +71,28 @@ export class PlatformController {
         provisioningStatus: true,
         createdAt: true,
         registration: {
-          select: { email: true, mobile: true, ownerName: true },
+          select: {
+            ownerName: true,
+            email: true,
+            mobile: true,
+            address: true,
+            status: true,
+            createdAt: true,
+            rejectionReason: true,
+          },
         },
       },
     });
-    const totals = {
-      total: clinics.length,
-      pending: await this.prisma.clinicRegistration.count({ where: { status: 'PENDING_APPROVAL' } }),
-      active: clinics.filter((c) => c.status === 'ACTIVE').length,
-      suspended: clinics.filter((c) => c.status === 'SUSPENDED').length,
-      failed: clinics.filter((c) => c.status === 'FAILED').length,
-    };
-    return { totals, clinics };
+    if (!clinic) {
+      throw new NotFoundException({ code: 'CLINIC_NOT_FOUND', message: 'Clinic not found' });
+    }
+    return clinic;
   }
 
   @Roles('platform_admin')
   @Get('registrations')
-  listRegistrations() {
-    return this.registrations.listRegistrations();
+  listRegistrations(@Query() query: ListRegistrationsQueryDto) {
+    return this.registrations.listRegistrations(query);
   }
 
   @Roles('platform_admin')

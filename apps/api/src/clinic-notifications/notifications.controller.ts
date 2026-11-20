@@ -42,6 +42,17 @@ export class NotificationsController {
     return this.notifications.list(ctx, query);
   }
 
+  @Roles('clinic_manager', 'clinic_receptionist', 'clinic_cashier')
+  @Get('clinic/patients/:patientId/notifications')
+  async listForPatient(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('patientId', ParseUUIDPipe) patientId: string,
+    @Query() query: ListNotificationsQueryDto,
+  ) {
+    const ctx = await this.clinicContext.resolve(session);
+    return this.notifications.list(ctx, { ...query, patientId });
+  }
+
   @Roles('clinic_manager')
   @Get('clinic/notifications/:id')
   async getOne(

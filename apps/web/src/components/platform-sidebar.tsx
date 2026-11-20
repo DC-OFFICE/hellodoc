@@ -5,7 +5,9 @@ import {
   GraduationCap,
   HeartPulse,
   LogOut,
+  MessageSquare,
   Stethoscope,
+  Users,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -27,14 +29,15 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
 } from '@/components/ui/sidebar';
 import { usePlatformAuth } from '@/lib/auth';
 
 const navItems = [
   { title: 'Clinics', to: '/platform-admin', icon: Building2 },
+  { title: 'SMS gateway', to: '/platform-admin/sms-gateway', icon: MessageSquare },
   { title: 'Specializations', to: '/platform-admin/specializations', icon: Stethoscope },
   { title: 'Qualifications', to: '/platform-admin/qualifications', icon: GraduationCap },
+  { title: 'Relationships', to: '/platform-admin/relationships', icon: Users },
 ] as const;
 
 function initials(email: string) {
@@ -53,7 +56,7 @@ export function PlatformSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="pointer-events-none">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-teal-700 text-white">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <HeartPulse className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
@@ -101,7 +104,7 @@ export function PlatformSidebar() {
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
                   <Avatar className="size-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg bg-teal-100 text-teal-800">
+                    <AvatarFallback className="rounded-lg bg-primary/15 text-primary">
                       {user ? initials(user.email) : 'PA'}
                     </AvatarFallback>
                   </Avatar>
@@ -121,7 +124,7 @@ export function PlatformSidebar() {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="size-8 rounded-lg">
-                      <AvatarFallback className="rounded-lg bg-teal-100 text-teal-800">
+                      <AvatarFallback className="rounded-lg bg-primary/15 text-primary">
                         {user ? initials(user.email) : 'PA'}
                       </AvatarFallback>
                     </Avatar>
@@ -145,7 +148,6 @@ export function PlatformSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   );
 }

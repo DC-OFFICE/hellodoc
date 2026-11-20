@@ -1,8 +1,25 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Plus, Search } from 'lucide-react';
+import { InvoiceFormDialog } from '@/components/invoice-form-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { api, ApiError } from '@/lib/api';
 
 type InvoiceRow = {
@@ -17,10 +34,38 @@ type InvoiceRow = {
   settlement: string;
 };
 
+function statusTone(status: string, settlement: string) {
+  const value = status === 'ISSUED' ? settlement : status;
+  if (value === 'PAID' || value === 'SETTLED') return 'active' as const;
+  if (value === 'PARTIAL' || value === 'ISSUED') return 'pending' as const;
+  if (value === 'VOID' || value === 'CANCELLED') return 'suspended' as const;
+  return 'default' as const;
+}
+
 export function InvoicesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [q, setQ] = useState('');
   const [items, setItems] = useState<InvoiceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const openCreate = useCallback(() => setCreateOpen(true), []);
+
+  const closeCreate = useCallback(
+    (open: boolean) => {
+      setCreateOpen(open);
+      if (!open) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('create');
+        setSearchParams(next, { replace: true });
+      }
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') openCreate();
+  }, [searchParams, openCreate]);
 
   async function load(search = q) {
     setError(null);
@@ -39,58 +84,112 @@ export function InvoicesPage() {
   }, []);
 
   return (
-    <Card className="shadow-none">
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Invoices</h1>
-        <Button asChild>
-          <Link to="/billing/invoices/new">New invoice</Link>
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <form
-          className="flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void load();
-          }}
-        >
-          <Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Invoice, patient name, or ID" />
-          <Button type="submit" variant="outline">Search</Button>
-        </form>
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-slate-500">
-                <th className="py-2">Invoice</th>
-                <th>Patient</th>
-                <th>Total</th>
-                <th>Paid</th>
-                <th>Balance</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr><td className="py-4 text-slate-500" colSpan={6}>No invoices yet.</td></tr>
-              ) : items.map((item) => (
-                <tr key={item.id} className="border-b">
-                  <td className="py-2">
-                    <Link className="text-teal-800 underline" to={`/billing/invoices/${item.id}`}>
-                      {item.invoiceNumber ?? 'Draft'}
-                    </Link>
-                  </td>
-                  <td>{item.patientName} · {item.patientNumber}</td>
-                  <td>LKR {item.invoiceTotal}</td>
-                  <td>LKR {item.paid}</td>
-                  <td>LKR {item.balance}</td>
-                  <td>{item.status === 'ISSUED' ? item.settlement : item.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Invoices</h1>
+          <p className="text-sm text-muted-foreground">
+            Review clinic invoices, balances, and settlement status.
+          </p>
         </div>
-      </CardContent>
-    </Card>
+        <Button type="button" onClick={openCreate}>
+          <Plus className="size-4" />
+          New invoice
+        </Button>
+      </div>
+
+      <Card className="overflow-hidden shadow-none">
+        <CardHeader className="gap-4 border-0 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-base">Invoice list</CardTitle>
+            <CardDescription>Search by invoice number, patient name, or ID.</CardDescription>
+          </div>
+          <form
+            className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void load();
+            }}
+          >
+            <div className="relative sm:w-72">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(event) => setQ(event.target.value)}
+                placeholder="Invoice, patient name, or ID"
+                className="pl-8"
+              />
+            </div>
+            <Button type="submit" variant="secondary">
+              Search
+            </Button>
+          </form>
+        </CardHeader>
+        <CardContent className="px-0 pt-0 pb-0">
+          {error ? <p className="px-6 py-4 text-sm text-destructive">{error}</p> : null}
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Invoice</TableHead>
+                <TableHead>Patient</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Paid</TableHead>
+                <TableHead>Balance</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    No invoices yet.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                items.map((item) => {
+                  const label = item.status === 'ISSUED' ? item.settlement : item.status;
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">
+                        <Link
+                          className="text-primary hover:underline"
+                          to={`/billing/invoices/${item.id}`}
+                        >
+                          {item.invoiceNumber ?? 'Draft'}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {item.patientName}
+                        <span className="mt-0.5 block font-mono text-xs">
+                          {item.patientNumber}
+                        </span>
+                      </TableCell>
+                      <TableCell className="tabular-nums font-medium">
+                        LKR {item.invoiceTotal}
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        LKR {item.paid}
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        LKR {item.balance}
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone={statusTone(item.status, item.settlement)}>{label}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <InvoiceFormDialog
+        open={createOpen}
+        onOpenChange={closeCreate}
+        onCreated={() => void load('')}
+      />
+    </div>
   );
 }

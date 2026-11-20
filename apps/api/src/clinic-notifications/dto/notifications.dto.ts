@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -59,6 +60,10 @@ export class ListNotificationsQueryDto {
   @IsOptional()
   @IsString()
   appointmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  patientId?: string;
 
   @IsOptional()
   @Type(() => Number)

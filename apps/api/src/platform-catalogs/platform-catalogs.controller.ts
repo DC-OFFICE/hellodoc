@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from 
 import { CurrentSession, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { CatalogsService } from './catalogs.service.js';
-import { CreateCatalogItemDto, UpdateCatalogItemDto } from './dto/catalog.dto.js';
+import { CreateCatalogItemDto, ListCatalogQueryDto, UpdateCatalogItemDto } from './dto/catalog.dto.js';
 
 @Controller('platform')
 export class PlatformCatalogsController {
@@ -10,8 +10,8 @@ export class PlatformCatalogsController {
 
   @Roles('platform_admin')
   @Get('specializations')
-  listSpecializations(@Query('q') q?: string) {
-    return this.catalogs.listAdmin('specialization', q);
+  listSpecializations(@Query() query: ListCatalogQueryDto) {
+    return this.catalogs.listAdmin('specialization', query);
   }
 
   @Roles('platform_admin')
@@ -35,8 +35,8 @@ export class PlatformCatalogsController {
 
   @Roles('platform_admin')
   @Get('qualifications')
-  listQualifications(@Query('q') q?: string) {
-    return this.catalogs.listAdmin('qualification', q);
+  listQualifications(@Query() query: ListCatalogQueryDto) {
+    return this.catalogs.listAdmin('qualification', query);
   }
 
   @Roles('platform_admin')
@@ -56,5 +56,30 @@ export class PlatformCatalogsController {
     @Body() dto: UpdateCatalogItemDto,
   ) {
     return this.catalogs.update('qualification', id, dto, session.userId);
+  }
+
+  @Roles('platform_admin')
+  @Get('relationships')
+  listRelationships(@Query() query: ListCatalogQueryDto) {
+    return this.catalogs.listAdmin('relationship', query);
+  }
+
+  @Roles('platform_admin')
+  @Post('relationships')
+  createRelationship(
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: CreateCatalogItemDto,
+  ) {
+    return this.catalogs.create('relationship', dto, session.userId);
+  }
+
+  @Roles('platform_admin')
+  @Patch('relationships/:id')
+  updateRelationship(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCatalogItemDto,
+  ) {
+    return this.catalogs.update('relationship', id, dto, session.userId);
   }
 }

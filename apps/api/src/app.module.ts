@@ -22,6 +22,7 @@ import { ClinicSessionsModule } from './clinic-sessions/clinic-sessions.module.j
 import { HealthModule } from './health/health.module.js';
 import { PlatformAuthModule } from './platform-auth/platform-auth.module.js';
 import { PlatformCatalogsModule } from './platform-catalogs/platform-catalogs.module.js';
+import { PlatformSmsModule } from './platform-sms/platform-sms.module.js';
 import { PlatformModule } from './platform/platform.module.js';
 import { PrismaPlatformModule } from './platform/prisma-platform.module.js';
 import { TenantProvisioningModule } from './tenant-provisioning/tenant-provisioning.module.js';
@@ -44,6 +45,7 @@ import { TenantProvisioningModule } from './tenant-provisioning/tenant-provision
     PlatformAuthModule,
     ClinicAuthModule,
     PlatformModule,
+    PlatformSmsModule,
     PlatformCatalogsModule,
     TenantProvisioningModule,
     ClinicDashboardModule,

@@ -242,19 +242,30 @@ Workflows in `.github/workflows/`:
 | --- | --- |
 | `STAGING_VITE_API_BASE_URL` | `https://hellodoc-staging-api.straightline.cloud/api` |
 
-4. CapRover → **Cluster** → edit an **editable** `ghcr.io` row (not `captain` @ `:996`):
+4. Enable image pulling from GHCR:
 
+**Option A (Recommended — 1-minute fix): Make packages Public on GitHub**
+Once GitHub Actions pushes the images for the first time:
+- Go to: `https://github.com/chamikathereal?tab=packages`
+- Click `hellodoc-staging-api` → **Package settings** → **Danger Zone** → **Change package visibility** → **Public**.
+- Click `hellodoc-staging-web` → **Package settings** → **Danger Zone** → **Change package visibility** → **Public**.
+- *Benefit: CapRover can pull immediately without any token expiration, SSO gates, or registry prefix issues.*
+
+**Option B: Configure CapRover Cluster Docker Registry**
+In CapRover → **Cluster** → **Docker Registries**:
+Edit or add a registry row:
 | Field | Value |
 | --- | --- |
-| Username | your GitHub username |
-| Password | PAT with `read:packages` + **SSO Authorize** for `DC-OFFICE` |
+| Username | `chamikathereal` |
+| Password | GitHub PAT (classic) with `read:packages` scope |
 | Domain | `ghcr.io` |
-| Image Prefix | `dc-office` |
+| Image Prefix | `chamikathereal` *(must match repository owner `chamikathereal`, NOT `dc-office`)* |
 
-Leave Default Push Registry as `captain @ registry.straightline.cloud:996` (or disabled). Do not set default push to GHCR.
+> [!IMPORTANT]
+> In CapRover **HTTP Settings** for `hellodoc-staging-api`, ensure **Container HTTP Port** is set to **`4000`** (NOT 80), then click **Save & Restart**. NestJS listens on port 4000!
 
 5. Push to `main` or **Actions → Deploy CapRover staging → Run workflow**.
-6. CapRover Build Logs should show `Pulling this image: ghcr.io/dc-office/hellodoc-staging-…` then success (not `denied`, not empty).
+6. CapRover Build Logs should show `Pulling this image: ghcr.io/chamikathereal/hellodoc-staging-…` then success.
 7. Confirm `/` is not CapRover placeholder, `/login` is **200**, `/api/health/live` is JSON.
 
 App env vars (`DATABASE_URL`, encryption keys, MFA, CORS) stay in CapRover App Configs — not in GitHub.

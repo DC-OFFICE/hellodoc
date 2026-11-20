@@ -68,10 +68,10 @@ export function DoctorDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Link to={`/doctors/${doctor.id}/edit`}>
+          <Link to={`/doctors?edit=${doctor.id}`}>
             <Button type="button" variant="secondary">Edit Profile</Button>
           </Link>
-          <Link to={`/sessions/new?doctorId=${doctor.id}`}>
+          <Link to={`/sessions?create=1&doctorId=${doctor.id}`}>
             <Button type="button">Create Session</Button>
           </Link>
         </div>

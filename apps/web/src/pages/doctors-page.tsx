@@ -1,9 +1,24 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Plus, Search } from 'lucide-react';
+import { DoctorFormDialog } from '@/components/doctor-form-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -12,145 +27,245 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { TablePagination } from '@/components/ui/table-pagination';
 import { api, ApiError } from '@/lib/api';
 import type { Doctor } from '@/lib/clinic-types';
 
 export function DoctorsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<Doctor[]>([]);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(10);
+  const [offset, setOffset] = useState(0);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const load = async () => {
+  const openCreate = useCallback(() => {
+    setEditingId(null);
+    setFormOpen(true);
+  }, []);
+
+  const openEdit = useCallback((id: string) => {
+    setEditingId(id);
+    setFormOpen(true);
+  }, []);
+
+  const closeForm = useCallback(
+    (open: boolean) => {
+      setFormOpen(open);
+      if (!open) {
+        setEditingId(null);
+        const next = new URLSearchParams(searchParams);
+        next.delete('create');
+        next.delete('edit');
+        setSearchParams(next, { replace: true });
+      }
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      openCreate();
+      return;
+    }
+    const editId = searchParams.get('edit');
+    if (editId) openEdit(editId);
+  }, [searchParams, openCreate, openEdit]);
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ status, limit: '100' });
+      const params = new URLSearchParams({
+        status,
+        limit: String(limit),
+        offset: String(offset),
+      });
       if (q.trim()) params.set('q', q.trim());
-      const data = await api<{ items: Doctor[] }>(`/clinic/doctors?${params}`);
+      const data = await api<{ items: Doctor[]; total: number }>(`/clinic/doctors?${params}`);
       setItems(data.items);
+      setTotal(data.total);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load doctors');
     } finally {
       setLoading(false);
     }
-  };
+  }, [status, limit, offset, q]);
 
   useEffect(() => {
     void load();
-  }, [status]);
+  }, [load]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Doctors</h1>
-          <p className="text-sm text-slate-600">Manage clinic doctor profiles and availability.</p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Doctors</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage clinic doctor profiles and availability.
+          </p>
         </div>
-        <Link to="/doctors/new">
-          <Button type="button">Add Doctor</Button>
-        </Link>
+        <Button type="button" onClick={openCreate}>
+          <Plus className="size-4" />
+          Add Doctor
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Input
-            placeholder="Search by name or registration"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="sm:max-w-xs"
-          />
-          <select
-            className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as typeof status)}
-          >
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-            <option value="ALL">All</option>
-          </select>
-          <Button type="button" variant="outline" onClick={() => void load()}>
-            Search
-          </Button>
+      <Card className="overflow-hidden shadow-none">
+        <CardHeader className="gap-4 border-0 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-base">Doctor directory</CardTitle>
+            <CardDescription>Search and filter clinic doctors.</CardDescription>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <div className="relative sm:w-64">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search name or registration"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void load();
+                }}
+                className="pl-8"
+              />
+            </div>
+            <Select
+              value={status}
+              onValueChange={(value) => setStatus(value as typeof status)}
+            >
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ACTIVE">Active</SelectItem>
+                <SelectItem value="INACTIVE">Inactive</SelectItem>
+                <SelectItem value="ALL">All</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="secondary" onClick={() => void load()}>
+              Search
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
-          {loading ? <p className="text-sm text-slate-500">Loading…</p> : null}
-          {error ? <p className="text-sm text-red-700">{error}</p> : null}
-          {!loading && !error && items.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500">No doctors found.</p>
+
+        <CardContent className="px-0 pt-0 pb-0">
+          {loading ? (
+            <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
           ) : null}
+          {error ? <p className="px-6 py-4 text-sm text-destructive">{error}</p> : null}
+          {!loading && !error && items.length === 0 ? (
+            <p className="px-6 py-10 text-center text-sm text-muted-foreground">
+              No doctors found.
+            </p>
+          ) : null}
+
           {items.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Doctor</TableHead>
-                  <TableHead>Registration</TableHead>
-                  <TableHead>Specialization</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((doctor) => (
-                  <TableRow key={doctor.id}>
-                    <TableCell className="font-medium text-slate-900">
-                      {doctor.displayName}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs tracking-wide text-slate-700">
-                      {doctor.registrationNumber}
-                    </TableCell>
-                    <TableCell>{doctor.specialization ?? '—'}</TableCell>
-                    <TableCell>
-                      <Badge tone={doctor.status === 'ACTIVE' ? 'active' : 'suspended'}>
-                        {doctor.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Link to={`/doctors/${doctor.id}`}>
-                          <Button size="sm" variant="outline" type="button">
-                            View
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Doctor</TableHead>
+                    <TableHead>Registration</TableHead>
+                    <TableHead>Specialization</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((doctor) => (
+                    <TableRow key={doctor.id}>
+                      <TableCell className="font-medium text-foreground">
+                        {doctor.displayName}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs tracking-wide text-muted-foreground">
+                        {doctor.registrationNumber}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {doctor.specialization ?? '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone={doctor.status === 'ACTIVE' ? 'active' : 'suspended'}>
+                          {doctor.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button asChild size="sm" variant="ghost">
+                            <Link to={`/doctors/${doctor.id}`}>View</Link>
                           </Button>
-                        </Link>
-                        <Link to={`/doctors/${doctor.id}/edit`}>
-                          <Button size="sm" variant="outline" type="button">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            type="button"
+                            onClick={() => openEdit(doctor.id)}
+                          >
                             Edit
                           </Button>
-                        </Link>
-                        <Button
-                          size="sm"
-                          variant={doctor.status === 'ACTIVE' ? 'destructive' : 'default'}
-                          type="button"
-                          disabled={busyId === doctor.id}
-                          onClick={async () => {
-                            setBusyId(doctor.id);
-                            try {
-                              const path =
-                                doctor.status === 'ACTIVE'
-                                  ? `/clinic/doctors/${doctor.id}/deactivate`
-                                  : `/clinic/doctors/${doctor.id}/reactivate`;
-                              await api(path, { method: 'POST', json: {} });
-                              await load();
-                            } catch (err) {
-                              setError(err instanceof ApiError ? err.message : 'Status update failed');
-                            } finally {
-                              setBusyId(null);
-                            }
-                          }}
-                        >
-                          {doctor.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                          <Button
+                            size="sm"
+                            variant={doctor.status === 'ACTIVE' ? 'destructive' : 'default'}
+                            type="button"
+                            disabled={busyId === doctor.id}
+                            onClick={async () => {
+                              setBusyId(doctor.id);
+                              try {
+                                const path =
+                                  doctor.status === 'ACTIVE'
+                                    ? `/clinic/doctors/${doctor.id}/deactivate`
+                                    : `/clinic/doctors/${doctor.id}/reactivate`;
+                                await api(path, { method: 'POST', json: {} });
+                                await load();
+                              } catch (err) {
+                                setError(
+                                  err instanceof ApiError ? err.message : 'Status update failed',
+                                );
+                              } finally {
+                                setBusyId(null);
+                              }
+                            }}
+                          >
+                            {doctor.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="border-t border-border/70 bg-muted/20 px-4 py-3">
+                <TablePagination
+                  total={total}
+                  limit={limit}
+                  offset={offset}
+                  pageSizeOptions={[10, 20, 30, 50]}
+                  onPageChange={(newOffset) => {
+                    setOffset(newOffset);
+                  }}
+                  onLimitChange={(newLimit) => {
+                    setLimit(newLimit);
+                    setOffset(0);
+                  }}
+                  disabled={loading}
+                />
+              </div>
+            </>
           ) : null}
         </CardContent>
       </Card>
+
+      <DoctorFormDialog
+        open={formOpen}
+        onOpenChange={closeForm}
+        doctorId={editingId}
+        onSaved={() => void load()}
+      />
     </div>
   );
 }

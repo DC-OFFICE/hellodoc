@@ -17,4 +17,10 @@ export class ClinicCatalogController {
   searchQualifications(@Query('q') q?: string) {
     return this.catalogs.searchActive('qualification', q);
   }
+
+  @Roles('clinic_manager', 'clinic_receptionist')
+  @Get('relationships')
+  searchRelationships(@Query('q') q?: string) {
+    return this.catalogs.searchActive('relationship', q);
+  }
 }
