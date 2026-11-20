@@ -6,6 +6,8 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
 import { assertProductionConfig } from './common/production-config.js';
+import { bootstrapPlatform } from './bootstrap-platform.js';
+import { PrismaPlatformService } from './platform/prisma-platform.service.js';
 
 async function bootstrap() {
   const problems = assertProductionConfig();
@@ -16,6 +18,10 @@ async function bootstrap() {
   }
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.enableShutdownHooks();
+
+  // Automatically bootstrap initial platform administrator and catalogs if DB is empty
+  const prismaPlatform = app.get(PrismaPlatformService);
+  await bootstrapPlatform(prismaPlatform);
   // Render (and similar hosts) terminate TLS at the proxy.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.use(helmet({
