@@ -7,9 +7,9 @@ import {
 import { normalizeCatalogName } from '../common/identifiers.js';
 import { PrismaPlatformService } from '../platform/prisma-platform.service.js';
 import { AuditService } from '../audit/audit.service.js';
-import { CreateCatalogItemDto, UpdateCatalogItemDto } from './dto/catalog.dto.js';
+import { CreateCatalogItemDto, ListCatalogQueryDto, UpdateCatalogItemDto } from './dto/catalog.dto.js';
 
-type CatalogKind = 'specialization' | 'qualification';
+type CatalogKind = 'specialization' | 'qualification' | 'relationship';
 
 @Injectable()
 export class CatalogsService {
@@ -18,26 +18,38 @@ export class CatalogsService {
     private readonly audit: AuditService,
   ) {}
 
-  async listAdmin(kind: CatalogKind, q?: string) {
+  async listAdmin(kind: CatalogKind, query: ListCatalogQueryDto = {}) {
+    const limit = Math.min(Math.max(query.limit ?? 10, 1), 100);
+    const offset = Math.max(query.offset ?? 0, 0);
     const where = {
-      ...(q?.trim()
-        ? { name: { contains: q.trim(), mode: 'insensitive' as const } }
+      ...(query.q?.trim()
+        ? { name: { contains: query.q.trim(), mode: 'insensitive' as const } }
         : {}),
     };
+    const orderBy = [{ active: 'desc' as const }, { name: 'asc' as const }];
     if (kind === 'specialization') {
-      return this.prisma.specialization.findMany({
-        where,
-        orderBy: [{ active: 'desc' }, { name: 'asc' }],
-      });
+      const [total, items] = await this.prisma.$transaction([
+        this.prisma.specialization.count({ where }),
+        this.prisma.specialization.findMany({ where, orderBy, skip: offset, take: limit }),
+      ]);
+      return { items, total, limit, offset };
     }
-    return this.prisma.qualification.findMany({
-      where,
-      orderBy: [{ active: 'desc' }, { name: 'asc' }],
-    });
+    if (kind === 'qualification') {
+      const [total, items] = await this.prisma.$transaction([
+        this.prisma.qualification.count({ where }),
+        this.prisma.qualification.findMany({ where, orderBy, skip: offset, take: limit }),
+      ]);
+      return { items, total, limit, offset };
+    }
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.relationship.count({ where }),
+      this.prisma.relationship.findMany({ where, orderBy, skip: offset, take: limit }),
+    ]);
+    return { items, total, limit, offset };
   }
 
-  async searchActive(kind: CatalogKind, q?: string, limit = 20) {
-    const take = Math.min(Math.max(limit, 1), 50);
+  async searchActive(kind: CatalogKind, q?: string, limit = 50) {
+    const take = Math.min(Math.max(limit, 1), 100);
     const where = {
       active: true,
       ...(q?.trim()
@@ -52,7 +64,15 @@ export class CatalogsService {
         select: { id: true, name: true },
       });
     }
-    return this.prisma.qualification.findMany({
+    if (kind === 'qualification') {
+      return this.prisma.qualification.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        take,
+        select: { id: true, name: true },
+      });
+    }
+    return this.prisma.relationship.findMany({
       where,
       orderBy: { name: 'asc' },
       take,
@@ -65,14 +85,20 @@ export class CatalogsService {
     if (!name) throw new BadRequestException('Name is required');
     const nameNormalized = normalizeCatalogName(name);
     try {
-      const item =
-        kind === 'specialization'
-          ? await this.prisma.specialization.create({
-              data: { name, nameNormalized, active: true },
-            })
-          : await this.prisma.qualification.create({
-              data: { name, nameNormalized, active: true },
-            });
+      let item;
+      if (kind === 'specialization') {
+        item = await this.prisma.specialization.create({
+          data: { name, nameNormalized, active: true },
+        });
+      } else if (kind === 'qualification') {
+        item = await this.prisma.qualification.create({
+          data: { name, nameNormalized, active: true },
+        });
+      } else {
+        item = await this.prisma.relationship.create({
+          data: { name, nameNormalized, active: true },
+        });
+      }
       await this.audit.record({
         actorId,
         action: `${kind}.created`,
@@ -90,10 +116,14 @@ export class CatalogsService {
   }
 
   async update(kind: CatalogKind, id: string, dto: UpdateCatalogItemDto, actorId: string) {
-    const existing =
-      kind === 'specialization'
-        ? await this.prisma.specialization.findUnique({ where: { id } })
-        : await this.prisma.qualification.findUnique({ where: { id } });
+    let existing;
+    if (kind === 'specialization') {
+      existing = await this.prisma.specialization.findUnique({ where: { id } });
+    } else if (kind === 'qualification') {
+      existing = await this.prisma.qualification.findUnique({ where: { id } });
+    } else {
+      existing = await this.prisma.relationship.findUnique({ where: { id } });
+    }
     if (!existing) throw new NotFoundException('Catalog item not found');
 
     const data: { name?: string; nameNormalized?: string; active?: boolean } = {};
@@ -106,10 +136,14 @@ export class CatalogsService {
     if (dto.active != null) data.active = dto.active;
 
     try {
-      const item =
-        kind === 'specialization'
-          ? await this.prisma.specialization.update({ where: { id }, data })
-          : await this.prisma.qualification.update({ where: { id }, data });
+      let item;
+      if (kind === 'specialization') {
+        item = await this.prisma.specialization.update({ where: { id }, data });
+      } else if (kind === 'qualification') {
+        item = await this.prisma.qualification.update({ where: { id }, data });
+      } else {
+        item = await this.prisma.relationship.update({ where: { id }, data });
+      }
       await this.audit.record({
         actorId,
         action: `${kind}.updated`,
@@ -127,10 +161,14 @@ export class CatalogsService {
   }
 
   async requireActive(kind: CatalogKind, id: string) {
-    const item =
-      kind === 'specialization'
-        ? await this.prisma.specialization.findUnique({ where: { id } })
-        : await this.prisma.qualification.findUnique({ where: { id } });
+    let item;
+    if (kind === 'specialization') {
+      item = await this.prisma.specialization.findUnique({ where: { id } });
+    } else if (kind === 'qualification') {
+      item = await this.prisma.qualification.findUnique({ where: { id } });
+    } else {
+      item = await this.prisma.relationship.findUnique({ where: { id } });
+    }
     if (!item || !item.active) {
       throw new BadRequestException(`Invalid or inactive ${kind}`);
     }

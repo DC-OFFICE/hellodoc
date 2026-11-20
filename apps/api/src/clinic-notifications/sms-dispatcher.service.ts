@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { randomUUID } from 'node:crypto';
 import { assertSafeClinicSchemaName, quoteIdent } from '../common/identifiers.js';
 import { TenantSqlClient } from '../tenant-provisioning/tenant-sql.client.js';
+import { PlatformSmsGatewayService } from '../platform-sms/platform-sms-gateway.service.js';
+import { gatewaySkipReason } from '../platform-sms/sms-gateway.types.js';
 import { decryptPayload } from './payload-crypto.js';
 import type { SmsProvider } from './sms/sms-provider.js';
 import { SMS_PROVIDER } from './sms/sms-provider.token.js';
@@ -26,6 +28,7 @@ export class SmsDispatcherService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly sql: TenantSqlClient,
     @Inject(SMS_PROVIDER) private readonly provider: SmsProvider,
+    private readonly gateway: PlatformSmsGatewayService,
   ) {}
 
   onModuleInit() {
@@ -195,6 +198,27 @@ export class SmsDispatcherService implements OnModuleInit, OnModuleDestroy {
             await client.query('COMMIT');
             return;
           }
+        }
+
+        const runtime = await this.gateway.getRuntimeConfig();
+        const envProvider = (process.env.SMS_PROVIDER ?? 'fake').toLowerCase();
+        const platformBlock = envProvider === 'textlk' ? null : gatewaySkipReason(runtime);
+        if (platformBlock) {
+          await client.query(
+            `UPDATE ${quoted}.notification_outbox
+             SET status = 'SKIPPED', finalized_at = NOW(), updated_at = NOW(),
+                 error_category = $2, claimed_until = NULL, claimed_by = NULL
+             WHERE id = $1`,
+            [row.id, platformBlock],
+          );
+          await client.query(
+            `UPDATE platform.sms_dispatch_index
+             SET status = 'SKIPPED', claimed_until = NULL, claimed_by = NULL, updated_at = NOW()
+             WHERE id = $1`,
+            [job.id],
+          );
+          await client.query('COMMIT');
+          return;
         }
 
         if (!row.payload_ciphertext || !row.payload_nonce) {

@@ -132,8 +132,8 @@ describe('billing', () => {
     const adminJar: Jar = { cookie: '', csrf: '' };
     await getCsrf(adminJar);
     assert.equal((await api('/platform-auth/login', { method: 'POST', jar: adminJar, json: { email: adminEmail, password: adminPass } })).status, 200);
-    const regs = await api('/platform/registrations', { jar: adminJar });
-    const pending = (regs.body as Array<{ id: string; clinicName: string; status: string }>).filter(
+    const regs = await api('/platform/registrations?status=PENDING_APPROVAL&limit=100', { jar: adminJar });
+    const pending = (regs.body as { items: Array<{ id: string; clinicName: string; status: string }> }).items.filter(
       (row) => row.status === 'PENDING_APPROVAL' && clinics.some((clinic) => clinic.clinicName === row.clinicName),
     );
     for (const reg of pending) {

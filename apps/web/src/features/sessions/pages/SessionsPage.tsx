@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -6,6 +7,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api, ApiError } from '@/lib/api';
 import type { ConsultationSession, Doctor } from '@/lib/clinic-types';
+import {
+  CreateSessionDialog,
+  type CreateSessionDefaults,
+} from '../components/CreateSessionDialog';
+import { SessionDetailDialog } from '../components/SessionDetailDialog';
 import { SessionEmptyState } from '../components/SessionEmptyState';
 import { SessionsCalendarView } from '../components/SessionsCalendarView';
 import { SessionsDataTable, type SessionRow } from '../components/SessionsDataTable';
@@ -23,6 +29,7 @@ import {
 } from '../utils/session-formatters';
 
 export function SessionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { filters, patch, reset } = useSessionFilters();
   const [items, setItems] = useState<ConsultationSession[]>([]);
   const [summarySource, setSummarySource] = useState<ConsultationSession[]>([]);
@@ -31,6 +38,80 @@ export function SessionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => startOfWeekIso(clinicTodayIso()));
   const [hasEverLoaded, setHasEverLoaded] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDefaults, setCreateDefaults] = useState<CreateSessionDefaults>({});
+
+  // Session Detail / Edit Dialog state
+  const detailId = searchParams.get('detail');
+  const isEdit = searchParams.get('edit') === '1';
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [startInEdit, setStartInEdit] = useState(false);
+
+  useEffect(() => {
+    if (detailId) {
+      setSelectedSessionId(detailId);
+      setStartInEdit(isEdit);
+      setDetailOpen(true);
+    }
+  }, [detailId, isEdit]);
+
+  const openSessionDetail = useCallback(
+    (sessionId: string, edit = false) => {
+      setSelectedSessionId(sessionId);
+      setStartInEdit(edit);
+      setDetailOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.set('detail', sessionId);
+      if (edit) next.set('edit', '1');
+      else next.delete('edit');
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const closeSessionDetail = useCallback(
+    (open: boolean) => {
+      setDetailOpen(open);
+      if (!open) {
+        setSelectedSessionId(null);
+        setStartInEdit(false);
+        const next = new URLSearchParams(searchParams);
+        next.delete('detail');
+        next.delete('edit');
+        setSearchParams(next, { replace: true });
+      }
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const openCreate = useCallback((defaults: CreateSessionDefaults = {}) => {
+    setCreateDefaults(defaults);
+    setCreateOpen(true);
+  }, []);
+
+  const closeCreate = useCallback(
+    (open: boolean) => {
+      setCreateOpen(open);
+      if (!open) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('create');
+        next.delete('doctorId');
+        next.delete('date');
+        setSearchParams(next, { replace: true });
+        setCreateDefaults({});
+      }
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    if (searchParams.get('create') !== '1') return;
+    openCreate({
+      doctorId: searchParams.get('doctorId') ?? undefined,
+      date: searchParams.get('date') ?? undefined,
+    });
+  }, [searchParams, openCreate]);
 
   const doctorMap = useMemo(() => {
     const map = new Map<string, Doctor>();
@@ -137,7 +218,7 @@ export function SessionsPage() {
 
   return (
     <div className="space-y-5">
-      <SessionsPageHeader />
+      <SessionsPageHeader onCreate={() => openCreate()} />
       <SessionsSummaryCards summary={summary} loading={loading && !hasEverLoaded} />
 
       <Card className="shadow-none">
@@ -156,7 +237,7 @@ export function SessionsPage() {
               <AlertTitle>Unable to load sessions</AlertTitle>
               <AlertDescription className="flex flex-wrap items-center gap-3">
                 <span>{error}</span>
-                <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+                <Button type="button" size="sm" variant="secondary" onClick={() => void load()}>
                   Retry
                 </Button>
               </AlertDescription>
@@ -176,6 +257,7 @@ export function SessionsPage() {
             <SessionEmptyState
               variant={hasEverLoaded && items.length === 0 && !filters.q ? 'empty' : 'filtered'}
               onReset={reset}
+              onCreate={() => openCreate()}
             />
           ) : null}
 
@@ -186,6 +268,8 @@ export function SessionsPage() {
               pageSize={filters.pageSize}
               onPageChange={(page) => patch({ page }, { resetPage: false })}
               onPageSizeChange={(pageSize) => patch({ pageSize, page: 1 })}
+              onCreate={() => openCreate()}
+              onSelectSession={(id, edit) => openSessionDetail(id, edit)}
               onCancel={async (sessionId, reason) => {
                 await api(`/clinic/sessions/${sessionId}/cancel`, {
                   method: 'POST',
@@ -202,11 +286,28 @@ export function SessionsPage() {
                 sessions={calendarSessions}
                 weekStart={weekStart}
                 onWeekChange={setWeekStart}
+                onCreateDate={(date) => openCreate({ date })}
+                onSelectSession={(id) => openSessionDetail(id, false)}
               />
             )
           ) : null}
         </CardContent>
       </Card>
+
+      <CreateSessionDialog
+        open={createOpen}
+        onOpenChange={closeCreate}
+        defaults={createDefaults}
+        onCreated={() => void load()}
+      />
+
+      <SessionDetailDialog
+        open={detailOpen}
+        onOpenChange={closeSessionDetail}
+        sessionId={selectedSessionId}
+        initialEdit={startInEdit}
+        onUpdated={() => void load()}
+      />
     </div>
   );
 }

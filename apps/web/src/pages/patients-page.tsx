@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { PatientFormDialog } from '@/components/patient-form-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -13,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { TablePagination } from '@/components/ui/table-pagination';
 import {
   displayPatientAge,
   formatRegisteredDate,
@@ -21,12 +23,13 @@ import { api, ApiError } from '@/lib/api';
 import type { Patient } from '@/lib/clinic-types';
 
 export function PatientsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<Patient[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState('');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
-  const [limit] = useState(25);
+  const [limit, setLimit] = useState(10);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +38,58 @@ export function PatientsPage() {
     phone: string;
     status: 'ALL' | 'ACTIVE' | 'INACTIVE';
   }>({ q: '', phone: '', status: 'ACTIVE' });
+
+  // Dialog state
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
+
+  const createParam = searchParams.get('create') === '1';
+  const editParam = searchParams.get('edit');
+
+  useEffect(() => {
+    if (createParam) {
+      setEditingPatientId(null);
+      setFormOpen(true);
+    } else if (editParam) {
+      setEditingPatientId(editParam);
+      setFormOpen(true);
+    }
+  }, [createParam, editParam]);
+
+  const openCreate = useCallback(() => {
+    setEditingPatientId(null);
+    setFormOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.set('create', '1');
+    next.delete('edit');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const openEdit = useCallback(
+    (id: string) => {
+      setEditingPatientId(id);
+      setFormOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.set('edit', id);
+      next.delete('create');
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const closeForm = useCallback(
+    (open: boolean) => {
+      setFormOpen(open);
+      if (!open) {
+        setEditingPatientId(null);
+        const next = new URLSearchParams(searchParams);
+        next.delete('create');
+        next.delete('edit');
+        setSearchParams(next, { replace: true });
+      }
+    },
+    [searchParams, setSearchParams],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,9 +130,6 @@ export function PatientsPage() {
     void load();
   }, [load]);
 
-  const page = Math.floor(offset / limit) + 1;
-  const pageCount = Math.max(1, Math.ceil(total / limit));
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -87,9 +139,9 @@ export function PatientsPage() {
             Register, search and manage your clinic&apos;s patient records.
           </p>
         </div>
-        <Link to="/patients/new">
-          <Button type="button">+ Register Patient</Button>
-        </Link>
+        <Button type="button" onClick={openCreate}>
+          + Register Patient
+        </Button>
       </div>
 
       <Card>
@@ -126,7 +178,7 @@ export function PatientsPage() {
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               setQ('');
               setPhone('');
@@ -149,7 +201,7 @@ export function PatientsPage() {
           {error ? (
             <div className="space-y-2">
               <p className="text-sm text-red-700">{error}</p>
-              <Button type="button" variant="outline" onClick={() => void load()}>
+              <Button type="button" variant="secondary" onClick={() => void load()}>
                 Retry
               </Button>
             </div>
@@ -157,15 +209,15 @@ export function PatientsPage() {
           {!loading && !error && items.length === 0 ? (
             <div className="py-10 text-center">
               <p className="text-sm text-slate-500">No patients found.</p>
-              <Link to="/patients/new" className="mt-3 inline-block">
-                <Button type="button" variant="secondary">
+              <div className="mt-3">
+                <Button type="button" variant="secondary" onClick={openCreate}>
                   Register first patient
                 </Button>
-              </Link>
+              </div>
             </div>
           ) : null}
           {items.length > 0 ? (
-            <>
+            <div className="overflow-hidden rounded-lg border border-border/80 bg-card shadow-2xs">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
@@ -208,54 +260,48 @@ export function PatientsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-2">
-                          <Link to={`/patients/${patient.id}`}>
-                            <Button size="sm" variant="outline" type="button">
-                              View
-                            </Button>
-                          </Link>
-                          <Link to={`/patients/${patient.id}/edit`}>
-                            <Button size="sm" variant="outline" type="button">
-                              Edit
-                            </Button>
-                          </Link>
+                          <Button asChild size="sm" variant="ghost">
+                            <Link to={`/patients/${patient.id}`}>View</Link>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            type="button"
+                            onClick={() => openEdit(patient.id)}
+                          >
+                            Edit
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-                <p>
-                  Showing {items.length} of {total}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={offset <= 0}
-                    onClick={() => setOffset(Math.max(0, offset - limit))}
-                  >
-                    Previous
-                  </Button>
-                  <span>
-                    Page {page} / {pageCount}
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={offset + limit >= total}
-                    onClick={() => setOffset(offset + limit)}
-                  >
-                    Next
-                  </Button>
-                </div>
+              <div className="border-t border-border/70 bg-muted/20 px-4 py-3">
+                <TablePagination
+                  total={total}
+                  limit={limit}
+                  offset={offset}
+                  pageSizeOptions={[10, 20, 30, 50]}
+                  onPageChange={setOffset}
+                  onLimitChange={(newLimit) => {
+                    setLimit(newLimit);
+                    setOffset(0);
+                  }}
+                  disabled={loading}
+                />
               </div>
-            </>
+            </div>
           ) : null}
         </CardContent>
       </Card>
+
+      <PatientFormDialog
+        open={formOpen}
+        onOpenChange={closeForm}
+        patientId={editingPatientId}
+        onSaved={() => void load()}
+      />
     </div>
   );
 }

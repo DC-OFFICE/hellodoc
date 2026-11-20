@@ -131,13 +131,16 @@ function validateDobAge(dto: {
   approximateAgeYears?: number | null;
 }) {
   const dob = cleanOptional(dto.dateOfBirth ?? null);
-  const age =
+  let age =
     dto.approximateAgeYears === undefined || dto.approximateAgeYears === null
       ? null
       : dto.approximateAgeYears;
 
+  // When DOB is provided, it is the authoritative birth record.
+  // We keep age as null in the DB to strictly satisfy the PostgreSQL constraint patients_dob_or_age_chk,
+  // without throwing an error when the UI calculated and passed both.
   if (dob && age != null) {
-    throw new BadRequestException('Provide either date of birth or approximate age, not both');
+    age = null;
   }
   if (dob) {
     const parsed = new Date(`${dob}T12:00:00`);

@@ -1,4 +1,5 @@
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreateCatalogItemDto {
   @IsString()
@@ -19,9 +20,22 @@ export class UpdateCatalogItemDto {
   active?: boolean;
 }
 
-export class CatalogSearchQueryDto {
+export class ListCatalogQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(120)
   q?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
 }

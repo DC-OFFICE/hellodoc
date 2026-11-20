@@ -50,22 +50,17 @@ export function NotificationsPage() {
   }, [load]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold tracking-[0.16em] text-teal-700 uppercase">
-            Clinic / Communications
-          </p>
-          <h1 className="text-2xl font-semibold text-slate-900">SMS history</h1>
+          <h1 className="text-2xl font-semibold text-foreground">SMS history</h1>
           <p className="text-sm text-muted-foreground">
             Delivery status for appointment messages. Tracking tokens are never shown.
           </p>
         </div>
-        <Link to="/settings/notifications">
-          <Button type="button" variant="outline">
-            Notification settings
-          </Button>
-        </Link>
+        <Button asChild variant="secondary">
+          <Link to="/settings/notifications">Notification settings</Link>
+        </Button>
       </div>
 
       <Card className="shadow-none">
@@ -131,7 +126,7 @@ export function NotificationsPage() {
                       <Button
                         type="button"
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         disabled={busyId === row.id}
                         onClick={async () => {
                           setBusyId(row.id);

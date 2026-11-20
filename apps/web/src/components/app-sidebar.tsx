@@ -33,7 +33,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
 } from '@/components/ui/sidebar';
 import { useClinicAuth } from '@/lib/auth';
 
@@ -99,7 +98,7 @@ export function AppSidebar({ clinicName }: { clinicName?: string | null }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="pointer-events-none">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-teal-700 text-white">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <HeartPulse className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
@@ -153,7 +152,7 @@ export function AppSidebar({ clinicName }: { clinicName?: string | null }) {
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
                   <Avatar className="size-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg bg-teal-100 text-teal-800">
+                    <AvatarFallback className="rounded-lg bg-primary/15 text-primary">
                       {initials(user?.name ?? 'U')}
                     </AvatarFallback>
                   </Avatar>
@@ -173,7 +172,7 @@ export function AppSidebar({ clinicName }: { clinicName?: string | null }) {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="size-8 rounded-lg">
-                      <AvatarFallback className="rounded-lg bg-teal-100 text-teal-800">
+                      <AvatarFallback className="rounded-lg bg-primary/15 text-primary">
                         {initials(user?.name ?? 'U')}
                       </AvatarFallback>
                     </Avatar>
@@ -198,7 +197,6 @@ export function AppSidebar({ clinicName }: { clinicName?: string | null }) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   );
 }

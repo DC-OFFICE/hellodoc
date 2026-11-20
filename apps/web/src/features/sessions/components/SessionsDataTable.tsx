@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   flexRender,
   getCoreRowModel,
@@ -60,6 +60,8 @@ export function SessionsDataTable({
   onPageChange,
   onPageSizeChange,
   onCancel,
+  onCreate,
+  onSelectSession,
 }: {
   data: SessionRow[];
   pageSize: number;
@@ -67,6 +69,8 @@ export function SessionsDataTable({
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   onCancel: (sessionId: string, reason: string) => Promise<void>;
+  onCreate?: () => void;
+  onSelectSession?: (sessionId: string, edit?: boolean) => void;
 }) {
   const navigate = useNavigate();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'startAt', desc: false }]);
@@ -204,13 +208,23 @@ export function SessionsDataTable({
                   <MoreHorizontal className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => navigate(`/sessions/${session.id}`)}>
+              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuItem
+                  onClick={() =>
+                    onSelectSession
+                      ? onSelectSession(session.id, false)
+                      : navigate(`/sessions?detail=${session.id}`)
+                  }
+                >
                   View details
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={!canModify}
-                  onClick={() => navigate(`/sessions/${session.id}?edit=1`)}
+                  onClick={() =>
+                    onSelectSession
+                      ? onSelectSession(session.id, true)
+                      : navigate(`/sessions?detail=${session.id}&edit=1`)
+                  }
                 >
                   Edit session
                 </DropdownMenuItem>
@@ -259,82 +273,98 @@ export function SessionsDataTable({
 
   return (
     <div className="space-y-3">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((hg) => (
-            <TableRow key={hg.id} className="hover:bg-transparent">
-              {hg.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id} className="whitespace-normal">
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <div className="overflow-hidden rounded-lg border border-border/80 bg-card shadow-2xs">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((hg) => (
+              <TableRow key={hg.id} className="hover:bg-transparent">
+                {hg.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                className="cursor-pointer hover:bg-muted/35"
+                onClick={() => {
+                  if (onSelectSession) onSelectSession(row.original.id, false);
+                  else navigate(`/sessions?detail=${row.original.id}`);
+                }}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id} className="whitespace-normal">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
 
-      <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">
-          Showing {showingFrom}–{showingTo} of {data.length}
-          {data.length > 0 ? (
-            <>
-              {' · '}
-              <Link to="/sessions/new" className="text-teal-700 hover:underline">
-                Create session
-              </Link>
-            </>
-          ) : null}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={String(pageSize)}
-            onValueChange={(v) => onPageSizeChange(Number(v))}
-          >
-            <SelectTrigger className="h-8 w-[7.5rem]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[10, 20, 50].map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n} / page
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pageIndex <= 0}
-            onClick={() => onPageChange(pageIndex)}
-          >
-            Previous
-          </Button>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            Page {pageIndex + 1} of {Math.max(pageCount, 1)}
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pageIndex + 1 >= pageCount}
-            onClick={() => onPageChange(pageIndex + 2)}
-          >
-            Next
-          </Button>
+        <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between text-xs text-muted-foreground">
+          <p>
+            Showing {showingFrom}–{showingTo} of {data.length}
+            {data.length > 0 ? (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  className="font-medium text-primary hover:underline"
+                  onClick={onCreate}
+                >
+                  Create session
+                </button>
+              </>
+            ) : null}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Rows per page:</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => onPageSizeChange(Number(v))}
+            >
+              <SelectTrigger className="h-8 w-24 bg-background text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 30, 50].map((n) => (
+                  <SelectItem key={n} value={String(n)} className="text-xs">
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 px-2.5 text-xs"
+              disabled={pageIndex <= 0}
+              onClick={() => onPageChange(pageIndex)}
+            >
+              Previous
+            </Button>
+            <span className="text-xs tabular-nums text-foreground font-medium px-1">
+              Page {pageIndex + 1} of {Math.max(pageCount, 1)}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 px-2.5 text-xs"
+              disabled={pageIndex + 1 >= pageCount}
+              onClick={() => onPageChange(pageIndex + 2)}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       </div>
 

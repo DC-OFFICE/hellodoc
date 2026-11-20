@@ -82,8 +82,8 @@ export function LoginPage() {
       <main className="mx-auto max-w-md px-6 py-10 animate-rise">
         <Card>
           <CardHeader>
-            <h1 className="text-2xl font-semibold text-slate-900">Clinic login</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <h1 className="text-2xl font-semibold text-foreground">Clinic login</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
               Sign in with an approved clinic staff account.
             </p>
           </CardHeader>

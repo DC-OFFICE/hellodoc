@@ -6,6 +6,14 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
   displayPatientAge,
   formatRegisteredDate,
 } from '@/features/patients/utils/patient-display';
@@ -20,10 +28,20 @@ type AuditItem = {
   metadata: Record<string, unknown>;
 };
 
+type SmsRow = {
+  id: string;
+  eventType: string;
+  recipientMasked: string;
+  status: string;
+  errorCategory: string | null;
+  createdAt: string;
+};
+
 export function PatientDetailPage() {
   const { id } = useParams();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [audit, setAudit] = useState<AuditItem[]>([]);
+  const [sms, setSms] = useState<SmsRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState('');
@@ -33,12 +51,14 @@ export function PatientDetailPage() {
     if (!id) return;
     setError(null);
     try {
-      const [p, a] = await Promise.all([
+      const [p, a, messages] = await Promise.all([
         api<Patient>(`/clinic/patients/${id}`),
         api<{ items: AuditItem[] }>(`/clinic/patients/${id}/audit`).catch(() => ({ items: [] })),
+        api<{ items: SmsRow[] }>(`/clinic/patients/${id}/notifications`).catch(() => ({ items: [] })),
       ]);
       setPatient(p);
       setAudit(a.items);
+      setSms(messages.items);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load patient');
     }
@@ -105,7 +125,7 @@ export function PatientDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {patient.status === 'ACTIVE' ? (
-            <Link to={`/appointments/new?patientId=${patient.id}`}>
+            <Link to={`/appointments?create=1&patientId=${patient.id}`}>
               <Button type="button">Book Appointment</Button>
             </Link>
           ) : null}
@@ -235,6 +255,43 @@ export function PatientDetailPage() {
               {patient.deactivationReason}
             </p>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <h2 className="font-semibold">SMS history</h2>
+        </CardHeader>
+        <CardContent>
+          {sms.length === 0 ? (
+            <p className="text-sm text-slate-500">No SMS messages for this patient yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sms.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium">{row.eventType}</TableCell>
+                    <TableCell className="font-mono text-xs">{row.recipientMasked}</TableCell>
+                    <TableCell>
+                      <Badge className="border border-border bg-transparent">{row.status}</Badge>
+                      {row.errorCategory ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{row.errorCategory}</p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-sm">{new Date(row.createdAt).toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

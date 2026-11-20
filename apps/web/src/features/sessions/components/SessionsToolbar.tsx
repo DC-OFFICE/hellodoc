@@ -136,7 +136,7 @@ export function SessionsToolbar({ filters, doctors, onChange, onApply, onReset }
           <p className="text-xs text-muted-foreground">Filter, sort and review consultation periods</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="hidden items-center rounded-md border bg-white p-0.5 md:flex">
+          <div className="hidden items-center rounded-md border border-border bg-muted/40 p-0.5 md:flex">
             <Button
               type="button"
               size="sm"
@@ -158,7 +158,7 @@ export function SessionsToolbar({ filters, doctors, onChange, onApply, onReset }
           </div>
           <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
             <SheetTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="md:hidden">
+              <Button type="button" variant="secondary" size="sm" className="md:hidden">
                 <Filter className="size-4" />
                 Filters
               </Button>
@@ -186,14 +186,14 @@ export function SessionsToolbar({ filters, doctors, onChange, onApply, onReset }
                   >
                     Apply
                   </Button>
-                  <Button type="button" variant="outline" onClick={onReset}>
+                  <Button type="button" variant="secondary" onClick={onReset}>
                     Reset
                   </Button>
                 </div>
               </div>
             </SheetContent>
           </Sheet>
-          <Button type="button" variant="outline" size="sm" onClick={onReset}>
+          <Button type="button" variant="secondary" size="sm" onClick={onReset}>
             <RotateCcw className="size-4" />
             Reset
           </Button>
@@ -213,7 +213,7 @@ export function SessionsToolbar({ filters, doctors, onChange, onApply, onReset }
         />
       </div>
 
-      <div className="flex items-center rounded-md border bg-white p-0.5 md:hidden">
+      <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5 md:hidden">
         <Button
           type="button"
           size="sm"
