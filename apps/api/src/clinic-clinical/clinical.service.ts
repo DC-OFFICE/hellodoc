@@ -370,22 +370,24 @@ export class ClinicalService {
     });
   }
 
-  async clinicalHistory(ctx: ClinicContext & { doctorId: string }, patientId: string) {
+  async clinicalHistory(ctx: ClinicContext, patientId: string) {
     return this.sql.withClient(async (client) => {
-      const related = await client.query(
-        `SELECT 1 FROM ${ctx.quotedSchema}.appointments a
-         JOIN ${ctx.quotedSchema}.consultation_sessions s ON s.id = a.session_id
-         WHERE a.patient_id = $1 AND s.doctor_id = $2
-         LIMIT 1`,
-        [patientId, ctx.doctorId],
-      );
-      if (!related.rows[0]) deny('CLINICAL_ACCESS_DENIED', 'No treatment relationship', 'forbidden');
+      if (ctx.doctorId) {
+        const related = await client.query(
+          `SELECT 1 FROM ${ctx.quotedSchema}.appointments a
+           JOIN ${ctx.quotedSchema}.consultation_sessions s ON s.id = a.session_id
+           WHERE a.patient_id = $1 AND s.doctor_id = $2
+           LIMIT 1`,
+          [patientId, ctx.doctorId],
+        );
+        if (!related.rows[0]) deny('CLINICAL_ACCESS_DENIED', 'No treatment relationship', 'forbidden');
+      }
       const encounters = await client.query(
         `SELECT id, status, chief_complaint, assessment, signed_at, created_at
          FROM ${ctx.quotedSchema}.clinical_encounters
-         WHERE patient_id = $1 AND doctor_id = $2
+         WHERE patient_id = $1 AND (status = 'SIGNED' OR ($2::text IS NOT NULL AND doctor_id = $2::uuid))
          ORDER BY created_at DESC`,
-        [patientId, ctx.doctorId],
+        [patientId, ctx.doctorId ?? null],
       );
       const history = await client.query(
         `SELECT id, category, summary, created_at FROM ${ctx.quotedSchema}.patient_medical_history
@@ -601,29 +603,64 @@ export class ClinicalService {
     });
   }
 
-  async getPrescription(ctx: ClinicContext & { doctorId: string }, id: string) {
+  async getPrescription(ctx: ClinicContext, id: string) {
     return this.sql.withClient(async (client) => {
       const rx = await client.query(
-        `SELECT * FROM ${ctx.quotedSchema}.prescriptions WHERE id = $1 AND doctor_id = $2`,
-        [id, ctx.doctorId],
+        `SELECT * FROM ${ctx.quotedSchema}.prescriptions WHERE id = $1`,
+        [id],
       );
       if (!rx.rows[0]) deny('CLINICAL_ACCESS_DENIED', 'Prescription not found', 'missing');
+      const row = rx.rows[0] as {
+        status: string;
+        doctor_id: string;
+        patient_id: string;
+        signed_at?: string | null;
+        created_at?: string;
+        clinical_instructions?: string | null;
+        [key: string]: unknown;
+      };
+      if (ctx.doctorId && row.doctor_id !== ctx.doctorId) {
+        deny('CLINICAL_ACCESS_DENIED', 'Doctor cannot access another doctor draft prescription', 'forbidden');
+      }
+      if (!ctx.doctorId && row.status !== 'SIGNED') {
+        deny('CLINICAL_ACCESS_DENIED', 'Staff can only view signed prescriptions', 'forbidden');
+      }
       const items = await client.query(
         `SELECT * FROM ${ctx.quotedSchema}.prescription_items WHERE prescription_id = $1 ORDER BY sort_order`,
         [id],
+      );
+      return { ...row, items: items.rows };
+    });
+  }
+
+  async getPrescriptionByAppointment(ctx: ClinicContext, appointmentId: string) {
+    return this.sql.withClient(async (client) => {
+      const enc = await client.query(
+        `SELECT id FROM ${ctx.quotedSchema}.clinical_encounters WHERE appointment_id = $1`,
+        [appointmentId],
+      );
+      if (!enc.rows[0]) return null;
+      const rx = await client.query(
+        `SELECT id, status, version, doctor_id, patient_id FROM ${ctx.quotedSchema}.prescriptions WHERE encounter_id = $1 AND status = 'SIGNED' ORDER BY created_at DESC LIMIT 1`,
+        [enc.rows[0].id],
+      );
+      if (!rx.rows[0]) return null;
+      const items = await client.query(
+        `SELECT * FROM ${ctx.quotedSchema}.prescription_items WHERE prescription_id = $1 ORDER BY sort_order`,
+        [rx.rows[0].id],
       );
       return { ...rx.rows[0], items: items.rows };
     });
   }
 
-  async prescriptionHtml(ctx: ClinicContext & { doctorId: string }, id: string) {
+  async prescriptionHtml(ctx: ClinicContext, id: string) {
     const rx = await this.getPrescription(ctx, id);
     const clinic = await this.sql.withClient(async (client) => {
       const profile = await client.query(`SELECT clinic_name FROM ${ctx.quotedSchema}.clinic_profile LIMIT 1`);
       const doctor = await client.query(
         `SELECT display_name, registration_number, credential_review_status
          FROM ${ctx.quotedSchema}.doctors WHERE id = $1`,
-        [ctx.doctorId],
+        [rx.doctor_id],
       );
       const patient = await client.query(
         `SELECT full_name, patient_number FROM ${ctx.quotedSchema}.patients WHERE id = $1`,

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { CurrentSession, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { ClinicRegistrationService } from '../clinic-registration/clinic-registration.service.js';
 import { TenantProvisioningService } from '../tenant-provisioning/tenant-provisioning.service.js';
 import { ListClinicsQueryDto, ListRegistrationsQueryDto } from './dto/list-query.dto.js';
@@ -12,6 +13,7 @@ export class PlatformController {
     private readonly prisma: PrismaPlatformService,
     private readonly registrations: ClinicRegistrationService,
     private readonly provisioning: TenantProvisioningService,
+    private readonly audit: AuditService,
   ) {}
 
   @Roles('platform_admin')
@@ -33,6 +35,7 @@ export class PlatformController {
           slug: true,
           schemaName: true,
           status: true,
+          smsEnabled: true,
           registrationStatus: true,
           provisioningStatus: true,
           createdAt: true,
@@ -67,6 +70,7 @@ export class PlatformController {
         slug: true,
         schemaName: true,
         status: true,
+        smsEnabled: true,
         registrationStatus: true,
         provisioningStatus: true,
         createdAt: true,
@@ -87,6 +91,28 @@ export class PlatformController {
       throw new NotFoundException({ code: 'CLINIC_NOT_FOUND', message: 'Clinic not found' });
     }
     return clinic;
+  }
+
+  @Roles('platform_admin')
+  @Post('clinics/:id/toggle-sms')
+  async toggleSms(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { enabled?: boolean },
+    @CurrentSession() session: AuthenticatedSession,
+  ) {
+    const enabled = Boolean(body?.enabled);
+    const updated = await this.prisma.tenant.update({
+      where: { id },
+      data: { smsEnabled: enabled },
+    });
+    await this.audit.record({
+      actorId: session.userId,
+      action: 'platform.clinic.sms_toggled',
+      targetType: 'tenant',
+      targetId: id,
+      metadata: { smsEnabled: enabled },
+    });
+    return { id: updated.id, smsEnabled: updated.smsEnabled };
   }
 
   @Roles('platform_admin')

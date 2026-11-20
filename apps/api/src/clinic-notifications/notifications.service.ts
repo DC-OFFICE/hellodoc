@@ -399,6 +399,25 @@ export class NotificationsService {
       return 'SKIPPED';
     }
 
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: ctx.tenantId },
+      select: { smsEnabled: true },
+    });
+    if (!tenant?.smsEnabled) {
+      await this.insertSkipped(client, ctx, {
+        appointmentId: row.id,
+        sessionId: row.session_id,
+        patientId: row.patient_id,
+        eventType: input.eventType,
+        dedupeKey: input.dedupeKey,
+        reason: 'CLINIC_SMS_DISABLED',
+        contactId: contact.id,
+        recipientMasked: maskPhone(contact.normalized_value),
+        recipientHash: hashRecipient(contact.normalized_value),
+      });
+      return 'SKIPPED';
+    }
+
     let trackingUrl: string | undefined;
     if (input.includeTrackingLink) {
       const issued = await this.queue.issueTrackingTokenInTx(client, {
