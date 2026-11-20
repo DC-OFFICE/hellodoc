@@ -65,15 +65,12 @@ export class AuthGuard implements CanActivate {
       }
     }
 
-    if (process.env.MFA_REQUIRED === 'true') {
+    if (process.env.MFA_REQUIRED === 'true' && session.context === 'clinic') {
       const url = req.originalUrl ?? req.url;
       const exempt = [
         '/clinic-auth/mfa/',
         '/clinic-auth/me',
         '/clinic-auth/logout',
-        '/platform-auth/mfa/',
-        '/platform-auth/me',
-        '/platform-auth/logout',
         '/health',
       ].some((path) => url.includes(path));
       if (!exempt) {
