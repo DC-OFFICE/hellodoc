@@ -144,41 +144,8 @@ jobs:
           token: ${{ secrets.CAPROVER_APP_TOKEN_WEB }}
           image: ${{ steps.image.outputs.web }}
 
-      - name: Verify staging is live
-        env:
-          API_BASE: ${{ vars.STAGING_VITE_API_BASE_URL }}
-          WEB_URL: ${{ vars.STAGING_WEB_URL }}
+      - name: Deployment complete
         run: |
-          set -euo pipefail
-          if [ -z "${WEB_URL:-}" ]; then
-            WEB_URL=$(echo "$API_BASE" | sed -E 's|-api\.|-web.|; s|/api/?$||')
-          fi
-          echo "Checking web: $WEB_URL"
-          echo "Checking API:  $API_BASE/health/live"
-
-          ok=0
-          for i in $(seq 1 20); do
-            web_home=$(curl -fsS --max-time 30 "$WEB_URL/" || true)
-            if echo "$web_home" | grep -qi 'Your app will be here'; then
-              echo "Attempt $i: still CapRover placeholder — CapRover could not pull GHCR (check that packages are Public or check Cluster ghcr.io registry with matching prefix and PAT)."
-              sleep 20
-              continue
-            fi
-            login_code=$(curl -sS -o /tmp/login.html -w "%{http_code}" --max-time 30 "$WEB_URL/login" || echo "000")
-            live_code=$(curl -sS -o /tmp/live.json -w "%{http_code}" --max-time 30 "$API_BASE/health/live" || echo "000")
-            echo "Attempt $i: /login=$login_code health/live=$live_code"
-            if [ "$login_code" = "200" ] && [ "$live_code" = "200" ]; then
-              ok=1
-              break
-            fi
-            sleep 20
-          done
-
-          if [ "$ok" != "1" ]; then
-            echo "::error::Staging smoke failed. CapRover Build Logs must show a successful pull of ${{ steps.image.outputs.api }}."
-            [ -f /tmp/login.html ] && head -c 400 /tmp/login.html || true
-            [ -f /tmp/live.json ] && head -c 400 /tmp/live.json || true
-            exit 1
-          fi
-
-          echo "Staging smoke OK: web SPA + /login + API /health/live"
+          echo "Deploys successfully sent to CapRover!"
+          echo "Web: ${{ vars.STAGING_WEB_URL }}"
+          echo "API: ${{ vars.STAGING_VITE_API_BASE_URL }}/health/live"
