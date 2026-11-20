@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -19,6 +21,7 @@ type ClinicDetail = {
   slug: string;
   schemaName: string;
   status: string;
+  smsEnabled: boolean;
   registrationStatus: string;
   provisioningStatus: string;
   createdAt: string;
@@ -102,6 +105,23 @@ export function PlatformClinicDetailPage() {
     }
   }
 
+  async function toggleSms(enabled: boolean) {
+    if (!clinic) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ id: string; smsEnabled: boolean }>(`/platform/clinics/${clinic.id}/toggle-sms`, {
+        method: 'POST',
+        json: { enabled },
+      });
+      setClinic((c) => (c ? { ...c, smsEnabled: res.smsEnabled } : c));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to update SMS setting');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!clinic && !error) {
     return <p className="text-sm text-muted-foreground">Loading clinic…</p>;
   }
@@ -136,6 +156,40 @@ export function PlatformClinicDetailPage() {
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      {clinic ? (
+        <Card className="border-teal-200 bg-teal-50/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-teal-900">SMS Gateway Entitlement</CardTitle>
+            <CardDescription>
+              Platform Administrator decision: control whether this clinic can send automated SMS notifications to patients (booking confirmations, queue arrival time estimates, approaching turn alerts).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+            <div>
+              <p className="font-medium text-sm text-foreground">
+                Status: {clinic.smsEnabled ? 'SMS Gateway is ENABLED for this clinic' : 'SMS Gateway is DISABLED for this clinic'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {clinic.smsEnabled
+                  ? 'Active — appointments booked at this clinic automatically trigger live arrival time SMS updates via SMSLenz.'
+                  : 'Disabled — patients will NOT receive outbound SMS (queue tracking link is still available online).'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Switch
+                id="clinic-sms-switch"
+                checked={clinic.smsEnabled}
+                disabled={busy}
+                onCheckedChange={(val) => void toggleSms(val)}
+              />
+              <Label htmlFor="clinic-sms-switch" className="cursor-pointer text-sm font-semibold">
+                {clinic.smsEnabled ? 'Enabled' : 'Disabled'}
+              </Label>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {clinic ? (
         <Card>

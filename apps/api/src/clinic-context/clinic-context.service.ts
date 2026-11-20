@@ -35,9 +35,9 @@ export class ClinicContextService {
     return this.resolveRole(session, ['CLINIC_MANAGER', 'CLINIC_RECEPTIONIST']);
   }
 
-  /** Patient directory reads for booking and invoicing. Not for clinical notes. */
+  /** Patient directory and signed prescription reads for front desk, doctors, and cashiers. */
   async resolvePatientDirectory(session: AuthenticatedSession): Promise<ClinicContext> {
-    return this.resolveRole(session, ['CLINIC_MANAGER', 'CLINIC_RECEPTIONIST', 'CLINIC_CASHIER']);
+    return this.resolveRole(session, ['CLINIC_MANAGER', 'CLINIC_RECEPTIONIST', 'CLINIC_CASHIER', 'CLINIC_DOCTOR']);
   }
 
   async resolveDoctor(session: AuthenticatedSession): Promise<ClinicContext & { doctorId: string }> {

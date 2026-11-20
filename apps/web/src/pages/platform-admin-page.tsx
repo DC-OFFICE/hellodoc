@@ -31,6 +31,7 @@ type ClinicRow = {
   id: string;
   clinicName: string;
   status: string;
+  smsEnabled?: boolean;
   provisioningStatus: string;
   createdAt: string;
   registration?: { email: string; mobile: string; ownerName: string } | null;
@@ -377,6 +378,7 @@ export function PlatformAdminPage() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>Clinic</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>SMS</TableHead>
                 <TableHead>Provisioning</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -395,6 +397,13 @@ export function PlatformAdminPage() {
                   <TableCell>
                     <Badge tone={statusTone(clinic.status)}>{clinic.status}</Badge>
                   </TableCell>
+                  <TableCell>
+                    {clinic.smsEnabled ? (
+                      <Badge tone="active">Active</Badge>
+                    ) : (
+                      <Badge tone="suspended">Disabled</Badge>
+                    )}
+                  </TableCell>
                   <TableCell>{clinic.provisioningStatus}</TableCell>
                   <TableCell>
                     <Button asChild size="sm" variant="ghost">
@@ -405,7 +414,7 @@ export function PlatformAdminPage() {
               ))}
               {clinics.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                     No clinics in this tab.
                   </TableCell>
                 </TableRow>

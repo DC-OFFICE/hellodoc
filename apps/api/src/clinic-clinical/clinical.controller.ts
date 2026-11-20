@@ -128,15 +128,22 @@ export class ClinicalController {
     return this.clinical.recordVitals(ctx, id, dto);
   }
 
-  @Roles('clinic_doctor')
+  @Roles('clinic_doctor', 'clinic_manager', 'clinic_receptionist')
   @Get('clinic/patients/:id/clinical-history')
   @Header('Cache-Control', 'no-store')
   async history(
     @CurrentSession() session: AuthenticatedSession,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const ctx = await this.clinicContext.resolveDoctor(session);
-    return this.clinical.clinicalHistory(ctx, id);
+    const ctx = await this.clinicContext.resolvePatientDirectory(session);
+    let doctorId: string | null = null;
+    try {
+      const docCtx = await this.clinicContext.resolveDoctor(session);
+      doctorId = docCtx.doctorId;
+    } catch {
+      doctorId = null;
+    }
+    return this.clinical.clinicalHistory({ ...ctx, doctorId }, id);
   }
 
   @Roles('clinic_doctor')
@@ -174,15 +181,26 @@ export class ClinicalController {
     return this.clinical.createPrescription(ctx, id);
   }
 
-  @Roles('clinic_doctor')
+  @Roles('clinic_doctor', 'clinic_manager', 'clinic_cashier')
   @Get('clinic/prescriptions/:id')
   @Header('Cache-Control', 'no-store')
   async getRx(
     @CurrentSession() session: AuthenticatedSession,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const ctx = await this.clinicContext.resolveDoctor(session);
+    const ctx = await this.clinicContext.resolvePatientDirectory(session);
     return this.clinical.getPrescription(ctx, id);
+  }
+
+  @Roles('clinic_doctor', 'clinic_manager', 'clinic_cashier')
+  @Get('clinic/appointments/:id/prescription')
+  @Header('Cache-Control', 'no-store')
+  async getRxByAppointment(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const ctx = await this.clinicContext.resolvePatientDirectory(session);
+    return this.clinical.getPrescriptionByAppointment(ctx, id);
   }
 
   @Roles('clinic_doctor')
@@ -228,14 +246,14 @@ export class ClinicalController {
     return this.clinical.revisePrescription(ctx, id);
   }
 
-  @Roles('clinic_doctor')
+  @Roles('clinic_doctor', 'clinic_manager', 'clinic_cashier')
   @Get('clinic/prescriptions/:id/print')
   async printRx(
     @CurrentSession() session: AuthenticatedSession,
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ) {
-    const ctx = await this.clinicContext.resolveDoctor(session);
+    const ctx = await this.clinicContext.resolvePatientDirectory(session);
     const html = await this.clinical.prescriptionHtml(ctx, id);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
