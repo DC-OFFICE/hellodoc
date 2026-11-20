@@ -175,7 +175,7 @@ jobs:
           done
 
           if [ "$ok" != "1" ]; then
-            echo "::error::Staging smoke failed. CapRover Build Logs must show a successful pull of ghcr.io/${{ steps.image.outputs.api }}."
+            echo "::error::Staging smoke failed. CapRover Build Logs must show a successful pull of ${{ steps.image.outputs.api }}."
             [ -f /tmp/login.html ] && head -c 400 /tmp/login.html || true
             [ -f /tmp/live.json ] && head -c 400 /tmp/live.json || true
             exit 1
