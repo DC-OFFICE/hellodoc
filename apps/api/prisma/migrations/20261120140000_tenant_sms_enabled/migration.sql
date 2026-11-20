@@ -6,4 +6,4 @@ UPDATE "platform"."platform_sms_gateway"
 SET "baseUrl" = 'https://smslenz.lk',
     "userId" = CASE WHEN "userId" = '' THEN '1862' ELSE "userId" END,
     "senderId" = CASE WHEN "senderId" = '' THEN 'DARTCODES' ELSE "senderId" END
-WHERE "id" = '00000000-0000-0000-0000-000000000001';
+WHERE "id" = 'default' OR "id" = '00000000-0000-0000-0000-000000000001';
