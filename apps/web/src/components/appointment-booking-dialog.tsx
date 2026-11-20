@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Check, Loader2, Lock, Phone, Search, X } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -78,6 +80,9 @@ export function AppointmentBookingDialog({
   const [patientPhone, setPatientPhone] = useState('');
   const [patientResults, setPatientResults] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [doctorId, setDoctorId] = useState('');
   const [sessionDate, setSessionDate] = useState(clinicTodayIso());
@@ -94,6 +99,75 @@ export function AppointmentBookingDialog({
   const [registerPatientOpen, setRegisterPatientOpen] = useState(false);
 
   useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
+
+  const handleSelectPatient = (p: Patient) => {
+    setSelectedPatient(p);
+    setPatientQ(`${p.fullName} (${p.patientNumber})`);
+    const phone = p.primaryContact?.displayValue ?? '';
+    setPatientPhone(phone);
+    setDropdownOpen(false);
+    setPatientResults([]);
+    setError(null);
+  };
+
+  const handleClearPatient = () => {
+    setSelectedPatient(null);
+    setPatientQ('');
+    setPatientPhone('');
+    setPatientResults([]);
+    setDropdownOpen(false);
+  };
+
+  const handlePatientInputChange = (val: string) => {
+    if (selectedPatient) {
+      setSelectedPatient(null);
+      setPatientPhone('');
+    }
+    setPatientQ(val);
+
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (!val.trim()) {
+      setPatientResults([]);
+      setDropdownOpen(false);
+      setSearching(false);
+      return;
+    }
+
+    setDropdownOpen(true);
+    setSearching(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const data = await api<{ items: Patient[] }>(
+          `/clinic/patients?${new URLSearchParams({
+            q: val.trim(),
+            status: 'ACTIVE',
+            limit: '10',
+          })}`,
+        );
+        setPatientResults(data.items);
+      } catch {
+        setPatientResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+  };
+
+  useEffect(() => {
     if (!open) return;
     setError(null);
     setStep('form');
@@ -102,6 +176,7 @@ export function AppointmentBookingDialog({
     setPatientPhone('');
     setPatientResults([]);
     setSelectedPatient(null);
+    setDropdownOpen(false);
     setDoctorId(defaults?.doctorId ?? '');
     setSessionId(defaults?.sessionId ?? '');
     setSessionDate(clinicTodayIso());
@@ -116,7 +191,9 @@ export function AppointmentBookingDialog({
 
     if (defaults?.patientId) {
       api<Patient>(`/clinic/patients/${defaults.patientId}`)
-        .then((p) => setSelectedPatient(p))
+        .then((p) => {
+          handleSelectPatient(p);
+        })
         .catch(() => undefined);
     }
   }, [open, defaults?.patientId, defaults?.doctorId, defaults?.sessionId]);
@@ -157,35 +234,6 @@ export function AppointmentBookingDialog({
     () => sessions.find((s) => s.id === sessionId) ?? null,
     [sessions, sessionId],
   );
-
-  const searchPatients = async () => {
-    setSearching(true);
-    setError(null);
-    try {
-      if (patientPhone.trim()) {
-        const data = await api<{ items: Patient[] }>('/clinic/patients/search', {
-          method: 'POST',
-          json: { phone: patientPhone.trim(), q: patientQ.trim() || undefined, status: 'ACTIVE' },
-        });
-        setPatientResults(data.items);
-      } else if (patientQ.trim()) {
-        const data = await api<{ items: Patient[] }>(
-          `/clinic/patients?${new URLSearchParams({
-            q: patientQ.trim(),
-            status: 'ACTIVE',
-            limit: '20',
-          })}`,
-        );
-        setPatientResults(data.items);
-      } else {
-        setError('Enter a name/ID or phone number to search');
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Patient search failed');
-    } finally {
-      setSearching(false);
-    }
-  };
 
   const goConfirm = () => {
     setError(null);
@@ -266,67 +314,153 @@ export function AppointmentBookingDialog({
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">1. Patient</h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Name / patient ID</Label>
-                <Input value={patientQ} onChange={(e) => setPatientQ(e.target.value)} />
+              <div className="space-y-1.5 relative" ref={dropdownRef}>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="patient-search-input">Name, mobile or patient ID</Label>
+                  {selectedPatient && (
+                    <button
+                      type="button"
+                      onClick={handleClearPatient}
+                      className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 font-medium transition-colors"
+                    >
+                      <X className="size-3" />
+                      Change
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    id="patient-search-input"
+                    value={patientQ}
+                    onChange={(e) => handlePatientInputChange(e.target.value)}
+                    onFocus={() => {
+                      if (!selectedPatient && patientQ.trim().length > 0) {
+                        setDropdownOpen(true);
+                      }
+                    }}
+                    placeholder="Type name or 07X mobile…"
+                    className={`pl-9 ${
+                      selectedPatient ? 'pr-8 font-medium border-primary/50 bg-primary/5 text-foreground' : ''
+                    }`}
+                    autoComplete="off"
+                  />
+                  {searching ? (
+                    <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />
+                  ) : selectedPatient ? (
+                    <button
+                      type="button"
+                      onClick={handleClearPatient}
+                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                      title="Clear patient selection"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  ) : null}
+                </div>
+
+                {/* Floating Search Dropdown */}
+                {dropdownOpen && !selectedPatient && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-lg">
+                    {searching ? (
+                      <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                        <Loader2 className="size-3.5 animate-spin" />
+                        Searching patients…
+                      </div>
+                    ) : patientResults.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-muted-foreground space-y-2">
+                        <p>No patients found matching "{patientQ}".</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setDropdownOpen(false);
+                            setRegisterPatientOpen(true);
+                          }}
+                        >
+                          + Register as new patient
+                        </Button>
+                      </div>
+                    ) : (
+                      <ul className="divide-y divide-border/50 py-1">
+                        {patientResults.map((p) => (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-xs hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between"
+                              onClick={() => handleSelectPatient(p)}
+                            >
+                              <div className="space-y-0.5">
+                                <div className="font-semibold text-foreground flex items-center gap-2">
+                                  <span>{p.fullName}</span>
+                                  <Badge tone="suspended" className="font-mono text-[10px] px-1.5 py-0">
+                                    {p.patientNumber}
+                                  </Badge>
+                                </div>
+                                <div className="text-muted-foreground flex items-center gap-1.5">
+                                  <Phone className="size-3 text-primary" />
+                                  <span className="font-mono">{p.primaryContact?.displayValue ?? 'No phone recorded'}</span>
+                                  {p.approximateAgeYears ? <span>· {p.approximateAgeYears} yrs</span> : null}
+                                  {p.sex ? <span>· {p.sex}</span> : null}
+                                </div>
+                              </div>
+                              <Check className="size-4 text-primary opacity-0 hover:opacity-100" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div className="space-y-1.5">
-                <Label>Phone</Label>
-                <Input
-                  value={patientPhone}
-                  onChange={(e) => setPatientPhone(e.target.value)}
-                  placeholder="0771234567"
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="patient-phone-input">Phone</Label>
+                  {selectedPatient && (
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-medium">
+                      <Lock className="size-3" />
+                      Locked to record
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    id="patient-phone-input"
+                    value={patientPhone}
+                    readOnly={Boolean(selectedPatient)}
+                    onChange={(e) => !selectedPatient && setPatientPhone(e.target.value)}
+                    placeholder="0771234567"
+                    className={`pl-9 ${
+                      selectedPatient
+                        ? 'bg-muted/70 text-muted-foreground cursor-not-allowed select-none font-medium'
+                        : ''
+                    }`}
+                  />
+                </div>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={searching}
-                onClick={() => void searchPatients()}
-              >
-                {searching ? 'Searching…' : 'Search patients'}
-              </Button>
+
+            <div className="flex items-center justify-between pt-1">
               <Button
                 type="button"
                 variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-primary px-2"
                 onClick={() => setRegisterPatientOpen(true)}
               >
                 + Register new patient
               </Button>
+              {selectedPatient && (
+                <span className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                  <Check className="size-3.5" />
+                  Selected: <strong>{selectedPatient.fullName}</strong>
+                </span>
+              )}
             </div>
-            {patientResults.length > 0 ? (
-              <ul className="space-y-2">
-                {patientResults.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                        selectedPatient?.id === p.id
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border bg-background'
-                      }`}
-                      onClick={() => setSelectedPatient(p)}
-                    >
-                      <span className="font-medium">{p.fullName}</span>
-                      <span className="ml-2 font-mono text-xs text-muted-foreground">
-                        {p.patientNumber}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {p.primaryContact?.displayValue ?? 'No phone'}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {selectedPatient ? (
-              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-                Selected: <strong>{selectedPatient.fullName}</strong> (
-                {selectedPatient.patientNumber})
-              </div>
-            ) : null}
           </section>
 
           <section className="space-y-3">
@@ -520,8 +654,8 @@ export function AppointmentBookingDialog({
         onOpenChange={setRegisterPatientOpen}
         initialPhone={patientPhone}
         onSaved={(newPatient) => {
-          setSelectedPatient(newPatient);
-          setPatientResults((prev) => [newPatient, ...prev.filter((p) => p.id !== newPatient.id)]);
+          handleSelectPatient(newPatient);
+          setRegisterPatientOpen(false);
         }}
       />
     </>
