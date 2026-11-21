@@ -30,6 +30,8 @@ export function DoctorDetailPage() {
   const [capacity, setCapacity] = useState(25);
   const [duration, setDuration] = useState(10);
   const [saving, setSaving] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
 
   const load = async () => {
     if (!id) return;
@@ -68,6 +70,29 @@ export function DoctorDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={inviting || !doctor.email}
+            onClick={async () => {
+              if (!doctor?.id || !doctor?.email) return;
+              setInviting(true);
+              setError(null);
+              try {
+                const res = await api<{ acceptUrl: string }>(`/clinic/doctors/${doctor.id}/invitations`, {
+                  method: 'POST',
+                  json: { email: doctor.email },
+                });
+                setInviteUrl(res.acceptUrl);
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : 'Could not generate doctor invitation');
+              } finally {
+                setInviting(false);
+              }
+            }}
+          >
+            {inviting ? 'Generating...' : 'Invite / Create Login'}
+          </Button>
           <Link to={`/doctors?edit=${doctor.id}`}>
             <Button type="button" variant="secondary">Edit Profile</Button>
           </Link>
@@ -76,6 +101,35 @@ export function DoctorDetailPage() {
           </Link>
         </div>
       </div>
+
+      {inviteUrl ? (
+        <Card className="border-teal-500/30 bg-teal-500/10">
+          <CardContent className="p-4 space-y-2 text-xs">
+            <p className="font-semibold text-teal-900 dark:text-teal-200">
+              Doctor Login Setup Link Generated for {doctor.email}
+            </p>
+            <p className="text-muted-foreground">
+              Send this link to the doctor, or open it directly to set up their doctor portal password:
+            </p>
+            <div className="flex items-center gap-2">
+              <Input readOnly value={inviteUrl} className="h-8 text-xs font-mono bg-background" />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void navigator.clipboard.writeText(inviteUrl)}
+              >
+                Copy Link
+              </Button>
+              <Button asChild size="sm">
+                <a href={inviteUrl} target="_blank" rel="noreferrer">
+                  Open Setup
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
