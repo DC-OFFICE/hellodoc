@@ -282,6 +282,21 @@ export class BillingService {
 
   async listServices(ctx: ClinicContext) {
     return this.sql.withClient(async (client) => {
+      // Ensure standard clinic billing services exist
+      await client.query(
+        `INSERT INTO ${ctx.quotedSchema}.billing_services (id, code, name, description, price, currency, tax_classification, active, created_by)
+         VALUES
+           (gen_random_uuid(), 'DOC_CONSULT', 'Doctor Consultation Fee', 'General practitioner or specialist consultation', 1500.00, 'LKR', 'EXEMPT', true, $1),
+           (gen_random_uuid(), 'CLINIC_FEE', 'Clinic / Facility Fee', 'Standard clinic operational and dispensary facility charge', 500.00, 'LKR', 'EXEMPT', true, $1),
+           (gen_random_uuid(), 'MEDICINES', 'Medicines / Pharmacy', 'Dispensed prescription medications and pharmaceutical supplies', 0.00, 'LKR', 'EXEMPT', true, $1),
+           (gen_random_uuid(), 'NURSING_PROCEDURE', 'Clinical Procedures / Dressing', 'Wound dressing, injections, minor suturing or nursing care', 750.00, 'LKR', 'EXEMPT', true, $1),
+           (gen_random_uuid(), 'LAB_INVESTIGATION', 'Laboratory & Diagnostic Tests', 'Diagnostic investigations, rapid blood tests, and lab screening', 1200.00, 'LKR', 'EXEMPT', true, $1),
+           (gen_random_uuid(), 'MEDICAL_CERTIFICATE', 'Medical Certificate / Report', 'Issuance of official clinical certificate or fitness report', 500.00, 'LKR', 'EXEMPT', true, $1),
+           (gen_random_uuid(), 'OTHER_SERVICES', 'Other Clinical Services', 'Miscellaneous clinical care, consumables, or specialized service', 0.00, 'LKR', 'EXEMPT', true, $1)
+         ON CONFLICT (code) DO NOTHING`,
+        [ctx.userId],
+      );
+
       const rows = await client.query(
         `SELECT id, code, name, description, price::text, currency, tax_classification, active
          FROM ${ctx.quotedSchema}.billing_services ORDER BY name ASC`,
@@ -1128,11 +1143,16 @@ export class BillingService {
         settings.tax_registered &&
         svc.tax_classification === 'TAXABLE' &&
         settings.vat_rate != null;
+      const qty = Math.max(1, item.quantity ?? 1);
+      const unitPrice =
+        item.unitPrice && compareMoney(item.unitPrice, '0.00') >= 0
+          ? formatCents(parseMoneyToCents(item.unitPrice, 'unitPrice'))
+          : svc.price;
       let amounts;
       try {
         amounts = lineAmounts({
-          quantity: item.quantity,
-          unitPrice: svc.price,
+          quantity: qty,
+          unitPrice,
           discount: item.discount ?? '0',
           taxRatePercent: applyTax ? String(settings.vat_rate) : null,
         });
@@ -1152,8 +1172,8 @@ export class BillingService {
           invoiceId,
           svc.id,
           svc.name,
-          item.quantity,
-          svc.price,
+          qty,
+          unitPrice,
           amounts.discount,
           svc.tax_classification,
           applyTax ? settings.vat_rate : null,
