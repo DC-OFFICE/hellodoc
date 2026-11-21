@@ -159,12 +159,12 @@ export function PatientVolumeChart({ data }: PatientVolumeChartProps) {
             {data.length <= 7
               ? data.map((d) => <span key={d.date}>{d.date.slice(5)}</span>)
               : [
-                  data[0],
-                  data[Math.floor(data.length / 2)],
-                  data[data.length - 1],
-                ].map((d, i) => (
-                  <span key={i}>{d?.date}</span>
-                ))}
+                data[0],
+                data[Math.floor(data.length / 2)],
+                data[data.length - 1],
+              ].map((d, i) => (
+                <span key={i}>{d?.date}</span>
+              ))}
           </div>
         </div>
       </CardContent>
