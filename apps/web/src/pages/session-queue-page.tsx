@@ -144,8 +144,8 @@ export function SessionQueuePage() {
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
       <div>
         <p className="font-mono text-lg font-semibold tracking-wide">#{entry.queueDisplay}</p>
-        <p className="text-sm text-slate-700">{entry.patientFullName}</p>
-        <p className="font-mono text-xs text-slate-500">{entry.patientNumber}</p>
+        <p className="text-sm text-foreground">{entry.patientFullName}</p>
+        <p className="font-mono text-xs text-muted-foreground">{entry.patientNumber}</p>
       </div>
       <div className="flex flex-wrap gap-2">{actions}</div>
     </div>
@@ -155,11 +155,11 @@ export function SessionQueuePage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold tracking-[0.16em] text-teal-700 uppercase">
+          <p className="text-xs font-semibold tracking-[0.16em] text-primary uppercase">
             Clinic Management / Sessions / Queue
           </p>
           <h1 className="text-2xl font-semibold">{board.session.doctorDisplayName}</h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             {board.session.localDate} · status {board.session.status}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -227,15 +227,15 @@ export function SessionQueuePage() {
             <h2 className="font-semibold">Now</h2>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-lg bg-teal-50 p-4 text-center">
-              <p className="text-xs uppercase tracking-wide text-teal-700">Called</p>
-              <p className="text-4xl font-semibold text-teal-900">
+            <div className="rounded-lg bg-teal-500/10 p-4 text-center">
+              <p className="text-xs uppercase tracking-wide text-primary">Called</p>
+              <p className="text-4xl font-semibold text-primary">
                 {board.currentCalled ? `#${board.currentCalled.queueDisplay}` : '—'}
               </p>
             </div>
-            <div className="rounded-lg bg-slate-50 p-4 text-center">
-              <p className="text-xs uppercase tracking-wide text-slate-600">In service</p>
-              <p className="text-3xl font-semibold text-slate-900">
+            <div className="rounded-lg bg-muted/40 p-4 text-center">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">In service</p>
+              <p className="text-3xl font-semibold text-foreground">
                 {board.currentInService ? `#${board.currentInService.queueDisplay}` : '—'}
               </p>
             </div>
@@ -248,7 +248,7 @@ export function SessionQueuePage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {board.waiting.length === 0 ? (
-              <p className="text-sm text-slate-500">No checked-in patients waiting.</p>
+              <p className="text-sm text-muted-foreground">No checked-in patients waiting.</p>
             ) : (
               board.waiting.map((entry) => (
                 <EntryRow
@@ -394,7 +394,7 @@ export function SessionQueuePage() {
               />
             ))}
             {board.completed.length ? (
-              <p className="pt-2 text-xs text-slate-500">
+              <p className="pt-2 text-xs text-muted-foreground">
                 Completed: {board.completed.map((c) => `#${c.queueDisplay}`).join(', ')}
               </p>
             ) : null}

@@ -59,15 +59,15 @@ export function CatalogCombobox({
         autoComplete="off"
       />
       {value ? (
-        <p className="mt-1 text-xs text-teal-700">Selected: {selectedName || value}</p>
+        <p className="mt-1 text-xs text-primary">Selected: {selectedName || value}</p>
       ) : null}
       {open && items.length > 0 ? (
-        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-white shadow-md">
+        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md">
           {items.map((item) => (
             <button
               key={item.id}
               type="button"
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-teal-50"
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onChange(item.id, item.name);

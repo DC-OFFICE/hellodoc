@@ -441,7 +441,7 @@ export function PatientDetailPage() {
                     ) : null}
                     {enc.assessment ? (
                       <p className="text-sm">
-                        <strong className="text-teal-900 font-semibold">Diagnosis / Assessment:</strong>{' '}
+                        <strong className="text-primary font-semibold">Diagnosis / Assessment:</strong>{' '}
                         <span className="font-medium text-foreground">{enc.assessment}</span>
                       </p>
                     ) : null}

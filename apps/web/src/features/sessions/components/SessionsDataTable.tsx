@@ -95,7 +95,7 @@ export function SessionsDataTable({
         ),
         cell: ({ row }) => (
           <div className="min-w-[10rem]">
-            <p className="font-medium text-slate-900">{row.original.doctorDisplayName}</p>
+            <p className="font-medium text-foreground">{row.original.doctorDisplayName}</p>
             {row.original.specialization ? (
               <p className="text-xs text-muted-foreground">{row.original.specialization}</p>
             ) : null}

@@ -91,9 +91,9 @@ export function PublicTrackPage() {
   if (error && !data) {
     return (
       <div className="mx-auto flex min-h-screen max-w-md items-center px-4">
-        <div className="w-full rounded-2xl border border-border bg-white p-6 text-center shadow-sm">
-          <p className="text-lg font-semibold text-slate-900">Link unavailable</p>
-          <p className="mt-2 text-sm text-slate-600">{error}</p>
+        <div className="w-full rounded-2xl border border-border bg-card text-card-foreground p-6 text-center shadow-sm">
+          <p className="text-lg font-semibold text-foreground">Link unavailable</p>
+          <p className="mt-2 text-sm text-muted-foreground">{error}</p>
         </div>
       </div>
     );
@@ -101,59 +101,59 @@ export function PublicTrackPage() {
 
   if (!data) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-slate-600">
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
         Loading your appointment…
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-teal-50 to-slate-50 px-4 py-8">
+    <div className="min-h-screen bg-background px-4 py-8">
       <div className="mx-auto max-w-md space-y-4">
         <header className="text-center">
-          <p className="text-xs font-semibold tracking-[0.2em] text-teal-700 uppercase">HelloDoc</p>
-          <h1 className="mt-1 text-xl font-semibold text-slate-900">{data.clinicName}</h1>
-          <p className="text-sm text-slate-600">{data.doctorDisplayName}</p>
+          <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">HelloDoc</p>
+          <h1 className="mt-1 text-xl font-semibold text-foreground">{data.clinicName}</h1>
+          <p className="text-sm text-muted-foreground">{data.doctorDisplayName}</p>
         </header>
 
-        <section className="rounded-2xl border border-teal-100 bg-white p-6 text-center shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Your appointment number</p>
-          <p className="mt-2 text-5xl font-semibold tracking-wider text-teal-800">
+        <section className="rounded-2xl border border-teal-500/20 bg-card text-card-foreground p-6 text-center shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Your appointment number</p>
+          <p className="mt-2 text-5xl font-semibold tracking-wider text-primary">
             #{data.yourQueueDisplay}
           </p>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-muted-foreground">
             {data.localDate} · status {data.yourState ?? data.appointmentStatus}
           </p>
         </section>
 
-        <section className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-border bg-card text-card-foreground p-6 shadow-sm">
           <div className="grid grid-cols-2 gap-4 text-center">
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Now serving</p>
-              <p className="mt-1 text-3xl font-semibold text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Now serving</p>
+              <p className="mt-1 text-3xl font-semibold text-foreground">
                 {data.nowServingDisplay ? `#${data.nowServingDisplay}` : '—'}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Estimated wait</p>
-              <p className="mt-2 text-sm font-medium text-slate-800">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Estimated wait</p>
+              <p className="mt-2 text-sm font-medium text-foreground">
                 {data.estimate.available ? data.estimate.label : 'Estimated time currently unavailable'}
               </p>
             </div>
           </div>
           {data.peopleAhead != null ? (
-            <p className="mt-4 text-center text-sm text-slate-600">
+            <p className="mt-4 text-center text-sm text-muted-foreground">
               About {data.peopleAhead} patient{data.peopleAhead === 1 ? '' : 's'} ahead
             </p>
           ) : null}
           {data.sessionStatus === 'PAUSED' || data.sessionStatus === 'DELAYED' ? (
-            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-center text-sm text-amber-800">
+            <p className="mt-3 rounded-md bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-700 dark:text-amber-300">
               Session is currently {data.sessionStatus.toLowerCase()}. Times may change.
             </p>
           ) : null}
         </section>
 
-        <footer className="text-center text-xs text-slate-500">
+        <footer className="text-center text-xs text-muted-foreground">
           <p>Updates automatically · {connection}</p>
           <p className="mt-1">Last updated {new Date(data.updatedAt).toLocaleTimeString()}</p>
           <p className="mt-2">

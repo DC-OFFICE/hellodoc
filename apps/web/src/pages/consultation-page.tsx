@@ -58,7 +58,7 @@ export function ConsultationPage() {
     void load().catch((err) => setError(err instanceof ApiError ? err.message : 'Load failed'));
   }, [id]);
 
-  if (!encounter) return <p className="text-sm text-slate-600">{error ?? 'Loading consultation…'}</p>;
+  if (!encounter) return <p className="text-sm text-muted-foreground">{error ?? 'Loading consultation…'}</p>;
   const locked = encounter.status !== 'DRAFT';
 
   const field = (key: keyof Encounter, label: string) => (
@@ -189,8 +189,8 @@ export function ConsultationPage() {
           <h1 className="text-2xl font-semibold">Consultation</h1>
           <span className="text-sm">{encounter.status}</span>
         </div>
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        {message ? <p className="text-sm text-teal-800">{message}</p> : null}
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {message ? <p className="text-sm text-primary">{message}</p> : null}
         {field('chief_complaint', 'Chief complaint')}
         {field('history_present_illness', 'History of present illness')}
         {field('examination_findings', 'Examination findings')}

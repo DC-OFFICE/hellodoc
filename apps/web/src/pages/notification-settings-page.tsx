@@ -54,7 +54,7 @@ export function NotificationSettingsPage() {
   return (
     <div className="mx-auto max-w-xl space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">SMS notifications</h1>
+        <h1 className="text-2xl font-semibold text-foreground">SMS notifications</h1>
         <p className="text-sm text-muted-foreground">
           Control which appointment events send SMS. Gateway credentials are managed by the platform.
         </p>
@@ -130,8 +130,8 @@ export function NotificationSettingsPage() {
             <Label>Approved sender ID</Label>
             <Input value={settings.approvedSenderId ?? 'Platform managed'} disabled />
           </div>
-          {error ? <p className="text-sm text-red-700">{error}</p> : null}
-          {saved ? <p className="text-sm text-teal-700">{saved}</p> : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {saved ? <p className="text-sm text-primary">{saved}</p> : null}
           <Button
             type="button"
             disabled={busy}

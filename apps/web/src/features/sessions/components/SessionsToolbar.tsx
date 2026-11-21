@@ -132,7 +132,7 @@ export function SessionsToolbar({ filters, doctors, onChange, onApply, onReset }
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">All sessions</h2>
+          <h2 className="text-base font-semibold text-foreground">All sessions</h2>
           <p className="text-xs text-muted-foreground">Filter, sort and review consultation periods</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

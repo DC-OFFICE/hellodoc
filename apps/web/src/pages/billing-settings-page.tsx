@@ -41,14 +41,14 @@ export function BillingSettingsPage() {
     void reload().catch((err: unknown) => setError(err instanceof ApiError ? err.message : 'Unable to load billing'));
   }, []);
 
-  if (!settings) return <p className="text-sm text-slate-600">{error ?? 'Loading billing settings…'}</p>;
+  if (!settings) return <p className="text-sm text-muted-foreground">{error ?? 'Loading billing settings…'}</p>;
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card className="shadow-none">
         <CardHeader><h1 className="text-xl font-semibold">Billing settings</h1></CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-slate-600">{settings.accountantNote}</p>
+          <p className="text-sm text-muted-foreground">{settings.accountantNote}</p>
           <Label>Display name</Label>
           <Input value={settings.displayName} onChange={(e) => setSettings({ ...settings, displayName: e.target.value })} />
           <Label>Address</Label>
@@ -57,7 +57,7 @@ export function BillingSettingsPage() {
           <Input value={settings.contact} onChange={(e) => setSettings({ ...settings, contact: e.target.value })} />
           <Label>Receipt footer</Label>
           <Input value={settings.receiptFooter} onChange={(e) => setSettings({ ...settings, receiptFooter: e.target.value })} />
-          <p className="text-sm">Document mode: {settings.documentMode}. Currency: LKR. Tax registration: {settings.taxRegistered ? 'yes' : 'no'}.</p>
+          <p className="text-sm text-muted-foreground">Document mode: {settings.documentMode}. Currency: LKR. Tax registration: {settings.taxRegistered ? 'yes' : 'no'}.</p>
           <Button
             type="button"
             onClick={async () => {
@@ -81,8 +81,8 @@ export function BillingSettingsPage() {
           >
             Save settings
           </Button>
-          {message ? <p className="text-sm text-teal-800">{message}</p> : null}
-          {error ? <p className="text-sm text-red-700">{error}</p> : null}
+          {message ? <p className="text-sm text-primary">{message}</p> : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </CardContent>
       </Card>
       <div className="space-y-4">
