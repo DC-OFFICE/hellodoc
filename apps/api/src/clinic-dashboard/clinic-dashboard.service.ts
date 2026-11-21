@@ -300,7 +300,7 @@ export class ClinicDashboardService {
          LEFT JOIN ${ctx.quotedSchema}.consultation_sessions s ON s.doctor_id = d.id AND s.local_date BETWEEN $1::date AND $2::date AND s.status != 'CANCELLED'
          LEFT JOIN ${ctx.quotedSchema}.appointments a ON a.session_id = s.id AND a.status != 'CANCELLED'
          LEFT JOIN ${ctx.quotedSchema}.queue_entries q ON q.appointment_id = a.id
-         WHERE d.active = TRUE
+         WHERE d.status = 'ACTIVE'
            AND ($3::uuid IS NULL OR d.id = $3::uuid)
          GROUP BY d.id, d.display_name, d.specialization
          ORDER BY "completedCount" DESC, "patientCount" DESC, d.display_name ASC`,
