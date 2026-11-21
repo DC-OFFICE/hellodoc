@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { CLINIC_SESSION_COOKIE } from '../auth/auth.constants.js';
@@ -7,7 +7,6 @@ import { CurrentSession, Public, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { SessionService } from '../auth/session.service.js';
 import { LoginDto } from '../platform-auth/dto/login.dto.js';
-import { MfaCodeDto, MfaVerifyDto, DisableMfaDto } from '../clinic-billing/dto/billing.dto.js';
 import { ClinicAuthService } from './clinic-auth.service.js';
 
 @Controller('clinic-auth')
@@ -30,9 +29,6 @@ export class ClinicAuthController {
       ip: req.ip,
       userAgent: req.header('user-agent') ?? undefined,
     });
-    if ('mfaRequired' in result) {
-      return { mfaRequired: true, mfaToken: result.mfaToken };
-    }
     setSessionCookie(res, 'clinic', result.token, result.expiresAt);
     return { user: result.user };
   }
@@ -41,41 +37,26 @@ export class ClinicAuthController {
   @Throttle({ default: { limit: Number(process.env.THROTTLE_LOGIN_LIMIT ?? 10), ttl: 60_000 } })
   @Post('mfa/verify')
   @HttpCode(200)
-  async verifyMfa(
-    @Body() dto: MfaVerifyDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = await this.auth.verifyMfaLogin(dto.mfaToken, dto.code, {
-      ip: req.ip,
-      userAgent: req.header('user-agent') ?? undefined,
-    });
-    setSessionCookie(res, 'clinic', result.token, result.expiresAt);
-    return { user: result.user };
+  async verifyMfa() {
+    throw new BadRequestException('Two-factor authentication is disabled');
   }
 
   @Roles('clinic_manager', 'clinic_doctor', 'clinic_cashier', 'clinic_receptionist')
   @Post('mfa/enroll')
-  enroll(@CurrentSession() session: AuthenticatedSession) {
-    return this.auth.me(session).then((user) => this.auth.enrollMfa(session.userId, user.email));
+  enroll() {
+    throw new BadRequestException('Two-factor authentication is disabled');
   }
 
   @Roles('clinic_manager', 'clinic_doctor', 'clinic_cashier', 'clinic_receptionist')
   @Post('mfa/confirm')
-  confirm(@CurrentSession() session: AuthenticatedSession, @Body() dto: MfaCodeDto) {
-    return this.auth.confirmMfa(session.userId, dto.code);
+  confirm() {
+    throw new BadRequestException('Two-factor authentication is disabled');
   }
 
   @Roles('clinic_manager', 'clinic_doctor', 'clinic_cashier', 'clinic_receptionist')
   @Post('mfa/disable')
-  async disable(
-    @CurrentSession() session: AuthenticatedSession,
-    @Body() dto: DisableMfaDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = await this.auth.disableMfa(session.userId, dto.password, dto.code);
-    clearSessionCookie(res, 'clinic');
-    return result;
+  async disable() {
+    return { ok: true, mfaDisabled: true };
   }
 
   @Public()

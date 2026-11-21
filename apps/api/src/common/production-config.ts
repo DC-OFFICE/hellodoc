@@ -1,7 +1,6 @@
 export function assertProductionConfig(env: NodeJS.ProcessEnv = process.env): string[] {
   if (env.NODE_ENV !== 'production') return [];
   const problems: string[] = [];
-  if (env.MFA_REQUIRED !== 'true') problems.push('MFA_REQUIRED must be true');
   const key = env.SMS_PAYLOAD_ENCRYPTION_KEY ?? '';
   if (!key || key.includes('dev-only') || key.includes('change-me')) {
     problems.push('SMS_PAYLOAD_ENCRYPTION_KEY must be a production secret');

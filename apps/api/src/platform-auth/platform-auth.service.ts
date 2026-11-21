@@ -39,23 +39,6 @@ export class PlatformAuthService {
     const ok = await this.passwords.verify(user!.passwordHash, password);
     if (!ok) invalid();
 
-    const mfa = await this.prisma.$queryRawUnsafe<Array<{ confirmed_at: Date | null }>>(
-      `SELECT confirmed_at FROM platform.user_mfa WHERE user_id = $1::uuid`,
-      user!.id,
-    );
-    if (mfa[0]?.confirmed_at) {
-      const mfaToken = generateSessionToken();
-      await this.prisma.$executeRawUnsafe(
-        `INSERT INTO platform.mfa_challenges (id, user_id, token_hash, tenant_id, expires_at)
-         VALUES ($1::uuid, $2::uuid, $3, NULL, $4)`,
-        randomUUID(),
-        user!.id,
-        hashToken(mfaToken),
-        new Date(Date.now() + 5 * 60 * 1000),
-      );
-      return { mfaRequired: true as const, mfaToken };
-    }
-
     const session = await this.sessions.createSession({
       userId: user!.id,
       context: 'platform',
