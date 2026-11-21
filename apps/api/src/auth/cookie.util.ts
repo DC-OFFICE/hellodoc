@@ -58,3 +58,13 @@ export function setCsrfCookie(res: Response, token: string): void {
     path: '/',
   });
 }
+
+export function clearCsrfCookie(res: Response): void {
+  const sameSite = cookieSameSite();
+  res.clearCookie(CSRF_COOKIE, {
+    httpOnly: false,
+    sameSite,
+    secure: cookieSecure(sameSite),
+    path: '/',
+  });
+}

@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, HttpCode, Post, Req, Res } 
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { CurrentSession, Public, Roles } from '../auth/decorators.js';
-import { clearSessionCookie, setSessionCookie } from '../auth/cookie.util.js';
+import { clearCsrfCookie, clearSessionCookie, setSessionCookie } from '../auth/cookie.util.js';
 import { PLATFORM_SESSION_COOKIE } from '../auth/auth.constants.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { SessionService } from '../auth/session.service.js';
@@ -50,6 +50,7 @@ export class PlatformAuthController {
     const token = req.cookies?.[PLATFORM_SESSION_COOKIE] as string | undefined;
     await this.sessions.revokeSession(token);
     clearSessionCookie(res, 'platform');
+    clearCsrfCookie(res);
     return { ok: true };
   }
 
