@@ -36,7 +36,7 @@ type Service = { id: string; code: string; name: string; price: string; active: 
 type LineItem = {
   id: string;
   serviceId: string;
-  quantity: string;
+  amount: string;
   discount: string;
 };
 
@@ -96,13 +96,13 @@ export function InvoiceFormDialog({
       const med = active.find((s) => s.code === 'MEDICINES' || s.name.toLowerCase().includes('medicine'));
 
       const initialLines: LineItem[] = [];
-      if (doc) initialLines.push({ id: crypto.randomUUID(), serviceId: doc.id, quantity: '1', discount: '0.00' });
-      if (clinic) initialLines.push({ id: crypto.randomUUID(), serviceId: clinic.id, quantity: '1', discount: '0.00' });
-      if (med) initialLines.push({ id: crypto.randomUUID(), serviceId: med.id, quantity: '1', discount: '0.00' });
+      if (doc) initialLines.push({ id: crypto.randomUUID(), serviceId: doc.id, amount: doc.price ?? '1500.00', discount: '0.00' });
+      if (clinic) initialLines.push({ id: crypto.randomUUID(), serviceId: clinic.id, amount: clinic.price ?? '500.00', discount: '0.00' });
+      if (med) initialLines.push({ id: crypto.randomUUID(), serviceId: med.id, amount: med.price ?? '0.00', discount: '0.00' });
 
       // Fallback: if codes don't match, add the first active service
       if (initialLines.length === 0 && active[0]) {
-        initialLines.push({ id: crypto.randomUUID(), serviceId: active[0].id, quantity: '1', discount: '0.00' });
+        initialLines.push({ id: crypto.randomUUID(), serviceId: active[0].id, amount: active[0].price ?? '0.00', discount: '0.00' });
       }
       setLines(initialLines);
     });
@@ -125,7 +125,12 @@ export function InvoiceFormDialog({
     const defaultService = services[0];
     setLines((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), serviceId: defaultService?.id ?? '', quantity: '1', discount: '0.00' },
+      {
+        id: crypto.randomUUID(),
+        serviceId: defaultService?.id ?? '',
+        amount: defaultService?.price ?? '0.00',
+        discount: '0.00',
+      },
     ]);
   }
 
@@ -138,12 +143,18 @@ export function InvoiceFormDialog({
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   }
 
+  function onSelectService(lineId: string, serviceId: string) {
+    const s = services.find((x) => x.id === serviceId);
+    updateLine(lineId, {
+      serviceId,
+      amount: s?.price ?? '0.00',
+    });
+  }
+
   // Calculate live totals
   const subtotal = lines.reduce((acc, line) => {
-    const s = services.find((x) => x.id === line.serviceId);
-    const price = s ? Number(s.price) : 0;
-    const qty = Number(line.quantity) || 1;
-    return acc + price * qty;
+    const amt = Number(line.amount) || 0;
+    return acc + amt;
   }, 0);
 
   const discountTotal = lines.reduce((acc, line) => {
@@ -172,7 +183,8 @@ export function InvoiceFormDialog({
           appointmentId: appointmentId.trim() || undefined,
           items: lines.map((l) => ({
             serviceId: l.serviceId,
-            quantity: Math.max(1, Number(l.quantity) || 1),
+            quantity: 1,
+            unitPrice: l.amount.trim() || '0.00',
             discount: l.discount.trim() || '0.00',
           })),
         },
@@ -248,7 +260,7 @@ export function InvoiceFormDialog({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-semibold">Invoice Fee Items (Doctor, Clinic, Medicines)</Label>
+          <Label className="text-sm font-semibold">Invoice Fee Items</Label>
           <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={addLine}>
             <Plus className="size-3 mr-1" /> Add item
           </Button>
@@ -256,11 +268,9 @@ export function InvoiceFormDialog({
 
         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
           {lines.map((line, index) => {
-            const currentService = services.find((s) => s.id === line.serviceId);
-            const linePrice = currentService ? Number(currentService.price) : 0;
-            const lineQty = Number(line.quantity) || 1;
+            const lineAmt = Number(line.amount) || 0;
             const lineDisc = Number(line.discount) || 0;
-            const lineTotal = Math.max(0, linePrice * lineQty - lineDisc);
+            const lineTotal = Math.max(0, lineAmt - lineDisc);
 
             return (
               <div key={line.id} className="rounded-md border p-2.5 bg-muted/20 space-y-2 text-xs">
@@ -284,20 +294,20 @@ export function InvoiceFormDialog({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-[2.5fr_1.25fr_1.25fr] gap-2.5 items-end">
                   <div>
-                    <Label className="text-[11px] text-muted-foreground">Service</Label>
+                    <Label className="text-[11px] text-muted-foreground">Reason / Service</Label>
                     <Select
                       value={line.serviceId || undefined}
-                      onValueChange={(val) => updateLine(line.id, { serviceId: val })}
+                      onValueChange={(val) => onSelectService(line.id, val)}
                     >
                       <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select fee item" />
+                        <SelectValue placeholder="Select fee reason" />
                       </SelectTrigger>
                       <SelectContent>
                         {services.map((s) => (
                           <SelectItem key={s.id} value={s.id}>
-                            {s.name} (LKR {s.price})
+                            {s.name} {Number(s.price) > 0 ? `(LKR ${s.price})` : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -305,14 +315,14 @@ export function InvoiceFormDialog({
                   </div>
 
                   <div>
-                    <Label className="text-[11px] text-muted-foreground">Qty</Label>
+                    <Label className="text-[11px] text-muted-foreground">Amount (LKR)</Label>
                     <Input
                       type="number"
-                      min="1"
-                      max="99"
-                      className="h-8 text-xs"
-                      value={line.quantity}
-                      onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                      step="0.01"
+                      min="0"
+                      className="h-8 text-xs font-semibold tabular-nums"
+                      value={line.amount}
+                      onChange={(e) => updateLine(line.id, { amount: e.target.value })}
                     />
                   </div>
 
@@ -321,7 +331,8 @@ export function InvoiceFormDialog({
                     <Input
                       type="number"
                       step="0.01"
-                      className="h-8 text-xs"
+                      min="0"
+                      className="h-8 text-xs tabular-nums"
                       value={line.discount}
                       onChange={(e) => updateLine(line.id, { discount: e.target.value })}
                     />

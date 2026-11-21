@@ -1,13 +1,16 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
   CalendarCheck2,
   CalendarClock,
+  ChevronRight,
   ChevronsUpDown,
   HeartPulse,
   LayoutDashboard,
   LogOut,
   Receipt,
+  Settings,
   Settings2,
   ShieldCheck,
   Stethoscope,
@@ -15,6 +18,11 @@ import {
   Users,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +42,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from '@/components/ui/sidebar';
 import { useClinicAuth } from '@/lib/auth';
 
@@ -44,24 +55,19 @@ const managerNav = [
   { title: 'Patients', to: '/patients', icon: Users, enabled: true },
   { title: 'Appointments', to: '/appointments', icon: CalendarCheck2, enabled: true },
   { title: 'SMS History', to: '/notifications', icon: Bell, enabled: true },
-  { title: 'SMS Settings', to: '/settings/notifications', icon: Settings2, enabled: true },
   { title: 'Invoices', to: '/billing/invoices', icon: Receipt, enabled: true },
   { title: 'Services', to: '/billing/services', icon: Tag, enabled: true },
   { title: 'Billing reports', to: '/billing/reports', icon: Receipt, enabled: true },
-  { title: 'Billing settings', to: '/settings/billing', icon: Settings2, enabled: true },
-  { title: 'Account security', to: '/settings/security', icon: ShieldCheck, enabled: true },
 ] as const;
 
 const doctorNav = [
   { title: 'Worklist', to: '/doctor/worklist', icon: Stethoscope, enabled: true },
-  { title: 'Account security', to: '/settings/security', icon: ShieldCheck, enabled: true },
 ] as const;
 
 const receptionistNav = [
   { title: 'Patients', to: '/patients', icon: Users, enabled: true },
   { title: 'Appointments', to: '/appointments', icon: CalendarCheck2, enabled: true },
   { title: 'Sessions', to: '/sessions', icon: CalendarClock, enabled: true },
-  { title: 'Account security', to: '/settings/security', icon: ShieldCheck, enabled: true },
 ] as const;
 
 const cashierNav = [
@@ -69,7 +75,16 @@ const cashierNav = [
   { title: 'Services', to: '/billing/services', icon: Tag, enabled: true },
   { title: 'Payments', to: '/billing/payments', icon: Receipt, enabled: true },
   { title: 'Billing reports', to: '/billing/reports', icon: Receipt, enabled: true },
-  { title: 'Account security', to: '/settings/security', icon: ShieldCheck, enabled: true },
+] as const;
+
+const managerSettingsNav = [
+  { title: 'SMS Settings', to: '/settings/notifications', icon: Settings2 },
+  { title: 'Billing settings', to: '/settings/billing', icon: Settings2 },
+  { title: 'Account security', to: '/settings/security', icon: ShieldCheck },
+] as const;
+
+const staffSettingsNav = [
+  { title: 'Account security', to: '/settings/security', icon: ShieldCheck },
 ] as const;
 
 function initials(name: string) {
@@ -94,6 +109,29 @@ export function AppSidebar({ clinicName }: { clinicName?: string | null }) {
         : user?.role === 'clinic_receptionist'
           ? receptionistNav
           : managerNav;
+
+  const settingsNavItems =
+    user?.role === 'clinic_doctor' ||
+    user?.role === 'clinic_cashier' ||
+    user?.role === 'clinic_receptionist'
+      ? staffSettingsNav
+      : managerSettingsNav;
+
+  const isSettingsActive = settingsNavItems.some(
+    (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+  );
+
+  const [settingsOpen, setSettingsOpen] = useState(isSettingsActive);
+  const prevPathRef = useRef(location.pathname);
+
+  useEffect(() => {
+    const wasSettings = prevPathRef.current.startsWith('/settings');
+    const isNowSettings = location.pathname.startsWith('/settings');
+    if (!wasSettings && isNowSettings) {
+      setSettingsOpen(true);
+    }
+    prevPathRef.current = location.pathname;
+  }, [location.pathname]);
 
   return (
     <Sidebar collapsible="icon">
@@ -140,6 +178,47 @@ export function AppSidebar({ clinicName }: { clinicName?: string | null }) {
                   </SidebarMenuItem>
                 );
               })}
+
+              {settingsNavItems.length > 0 ? (
+                <Collapsible
+                  open={settingsOpen}
+                  onOpenChange={setSettingsOpen}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip="Settings"
+                        isActive={isSettingsActive}
+                        className="cursor-pointer"
+                      >
+                        <Settings className="size-4" />
+                        <span>Settings</span>
+                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {settingsNavItems.map((item) => {
+                          const active =
+                            location.pathname === item.to ||
+                            location.pathname.startsWith(`${item.to}/`);
+                          return (
+                            <SidebarMenuSubItem key={item.title}>
+                              <SidebarMenuSubButton asChild isActive={active}>
+                                <Link to={item.to}>
+                                  <item.icon className="size-4" />
+                                  <span>{item.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              ) : null}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

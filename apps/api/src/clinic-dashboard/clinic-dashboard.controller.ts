@@ -1,15 +1,19 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query, UnauthorizedException } from '@nestjs/common';
 import { CurrentSession, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
+import { ClinicContextService } from '../clinic-context/clinic-context.service.js';
 import { PrismaPlatformService } from '../platform/prisma-platform.service.js';
 import { TenantProvisioningService } from '../tenant-provisioning/tenant-provisioning.service.js';
-import { UnauthorizedException } from '@nestjs/common';
+import { ClinicDashboardService } from './clinic-dashboard.service.js';
+import { DashboardMetricsQueryDto } from './dto/dashboard-metrics-query.dto.js';
 
 @Controller('clinic')
 export class ClinicDashboardController {
   constructor(
     private readonly prisma: PrismaPlatformService,
     private readonly provisioning: TenantProvisioningService,
+    private readonly clinicContext: ClinicContextService,
+    private readonly dashboardService: ClinicDashboardService,
   ) {}
 
   @Roles('clinic_manager', 'clinic_doctor', 'clinic_cashier', 'clinic_receptionist')
@@ -48,5 +52,15 @@ export class ClinicDashboardController {
       clinicName,
       status: membership.tenant.status,
     };
+  }
+
+  @Roles('clinic_manager', 'clinic_doctor', 'clinic_cashier', 'clinic_receptionist')
+  @Get('dashboard/metrics')
+  async getDashboardMetrics(
+    @CurrentSession() session: AuthenticatedSession,
+    @Query() query: DashboardMetricsQueryDto,
+  ) {
+    const ctx = await this.clinicContext.resolvePatientDirectory(session);
+    return this.dashboardService.getMetrics(ctx, query);
   }
 }

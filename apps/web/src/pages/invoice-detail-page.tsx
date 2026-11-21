@@ -65,7 +65,7 @@ export function InvoiceDetailPage() {
             <tbody>
               {invoice.items.map((item) => (
                 <tr key={item.description} className="border-b">
-                  <td className="py-2">{item.description} × {item.quantity}</td>
+                  <td className="py-2">{item.description}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</td>
                   <td className="text-right">LKR {item.lineTotal}</td>
                 </tr>
               ))}

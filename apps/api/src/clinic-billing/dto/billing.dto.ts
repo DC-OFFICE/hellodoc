@@ -188,11 +188,17 @@ export class InvoiceItemInput {
   @IsUUID()
   serviceId!: string;
 
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(99)
-  quantity!: number;
+  quantity?: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(MONEY)
+  unitPrice?: string;
 
   @IsOptional()
   @IsString()
