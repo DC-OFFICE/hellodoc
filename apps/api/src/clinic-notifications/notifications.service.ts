@@ -135,6 +135,7 @@ export class NotificationsService {
     return this.sql.withClient(async (client) => {
       const params: unknown[] = [];
       const where: string[] = [];
+
       if (query.status) {
         params.push(query.status);
         where.push(`status = $${params.length}`);
@@ -151,40 +152,152 @@ export class NotificationsService {
         params.push(query.patientId);
         where.push(`patient_id = $${params.length}`);
       }
+
+      const effectiveFrom = query.from || query.date;
+      const effectiveTo = query.to || query.date;
+
+      if (effectiveFrom) {
+        params.push(effectiveFrom);
+        where.push(`(created_at AT TIME ZONE 'Asia/Colombo')::date >= $${params.length}::date`);
+      }
+      if (effectiveTo) {
+        params.push(effectiveTo);
+        where.push(`(created_at AT TIME ZONE 'Asia/Colombo')::date <= $${params.length}::date`);
+      }
+
+      const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+      const summaryParams = [...params];
+
       params.push(limit);
       const limitIdx = params.length;
       params.push(offset);
       const offsetIdx = params.length;
-      const result = await client.query(
-        `SELECT id, appointment_id, session_id, event_type, recipient_masked, status,
-                attempts, provider_message_id, provider_name, error_category,
-                estimated_cost, created_at, updated_at, submitted_at, finalized_at
-         FROM ${ctx.quotedSchema}.notification_outbox
-         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-         ORDER BY created_at DESC
-         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-        params,
-      );
+
+      const [result, summaryResult] = await Promise.all([
+        client.query<{
+          id: string;
+          appointment_id: string | null;
+          session_id: string | null;
+          event_type: string;
+          recipient_masked: string;
+          status: string;
+          attempts: number;
+          provider_message_id: string | null;
+          provider_name: string | null;
+          error_category: string | null;
+          estimated_cost: string | number | null;
+          created_at: Date;
+          updated_at: Date;
+          submitted_at: Date | null;
+          finalized_at: Date | null;
+        }>(
+          `SELECT id, appointment_id, session_id, event_type, recipient_masked, status,
+                  attempts, provider_message_id, provider_name, error_category,
+                  estimated_cost, created_at, updated_at, submitted_at, finalized_at
+           FROM ${ctx.quotedSchema}.notification_outbox
+           ${whereClause}
+           ORDER BY created_at DESC
+           LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+          params,
+        ),
+        client.query<{
+          totalCount: number | string;
+          sentCount: number | string;
+          deliveredCount: number | string;
+          submittedCount: number | string;
+          failedCount: number | string;
+          uncertainCount: number | string;
+          skippedCount: number | string;
+          cancelledCount: number | string;
+          totalSpendLkr: number | string;
+          totalSavedLkr: number | string;
+        }>(
+          `SELECT
+             COUNT(*)::int AS "totalCount",
+             COUNT(*) FILTER (WHERE status IN ('SUBMITTED', 'DELIVERED'))::int AS "sentCount",
+             COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS "deliveredCount",
+             COUNT(*) FILTER (WHERE status = 'SUBMITTED')::int AS "submittedCount",
+             COUNT(*) FILTER (WHERE status = 'FAILED')::int AS "failedCount",
+             COUNT(*) FILTER (WHERE status = 'UNCERTAIN')::int AS "uncertainCount",
+             COUNT(*) FILTER (WHERE status = 'SKIPPED')::int AS "skippedCount",
+             COUNT(*) FILTER (WHERE status = 'CANCELLED')::int AS "cancelledCount",
+             COALESCE(SUM(COALESCE(estimated_cost, 0.60)) FILTER (WHERE status IN ('SUBMITTED', 'DELIVERED')), 0)::float AS "totalSpendLkr",
+             COALESCE(SUM(0.60) FILTER (WHERE status = 'SKIPPED'), 0)::float AS "totalSavedLkr"
+           FROM ${ctx.quotedSchema}.notification_outbox
+           ${whereClause}`,
+          summaryParams,
+        ),
+      ]);
+
+      const s = summaryResult.rows[0] ?? {
+        totalCount: 0,
+        sentCount: 0,
+        deliveredCount: 0,
+        submittedCount: 0,
+        failedCount: 0,
+        uncertainCount: 0,
+        skippedCount: 0,
+        cancelledCount: 0,
+        totalSpendLkr: 0,
+        totalSavedLkr: 0,
+      };
+
+      const totalMessages = Number(s.totalCount) || 0;
+      const sentCount = Number(s.sentCount) || 0;
+      const deliveredCount = Number(s.deliveredCount) || 0;
+      const submittedCount = Number(s.submittedCount) || 0;
+      const failedCount = Number(s.failedCount) || 0;
+      const uncertainCount = Number(s.uncertainCount) || 0;
+      const skippedCount = Number(s.skippedCount) || 0;
+      const cancelledCount = Number(s.cancelledCount) || 0;
+      const totalSpendLkr = Number(s.totalSpendLkr) || 0;
+      const totalSavedLkr = Number(s.totalSavedLkr) || 0;
+      const deliveryRate =
+        sentCount > 0 ? Number(((deliveredCount / sentCount) * 100).toFixed(1)) : 100.0;
+
       return {
-        items: result.rows.map((r) => ({
-          id: r.id,
-          appointmentId: r.appointment_id,
-          sessionId: r.session_id,
-          eventType: r.event_type,
-          recipientMasked: r.recipient_masked,
-          status: r.status,
-          attempts: r.attempts,
-          providerMessageId: r.provider_message_id,
-          providerName: r.provider_name,
-          errorCategory: r.error_category,
-          estimatedCost: r.estimated_cost != null ? Number(r.estimated_cost) : null,
-          createdAt: r.created_at?.toISOString?.() ?? r.created_at,
-          updatedAt: r.updated_at?.toISOString?.() ?? r.updated_at,
-          submittedAt: r.submitted_at?.toISOString?.() ?? r.submitted_at,
-          finalizedAt: r.finalized_at?.toISOString?.() ?? r.finalized_at,
-        })),
+        items: result.rows.map((r) => {
+          const cost =
+            r.estimated_cost != null
+              ? Number(r.estimated_cost)
+              : ['SUBMITTED', 'DELIVERED'].includes(r.status)
+                ? 0.6
+                : 0.0;
+          return {
+            id: r.id,
+            appointmentId: r.appointment_id,
+            sessionId: r.session_id,
+            eventType: r.event_type,
+            recipientMasked: r.recipient_masked,
+            status: r.status,
+            attempts: r.attempts,
+            providerMessageId: r.provider_message_id,
+            providerName: r.provider_name,
+            errorCategory: r.error_category,
+            estimatedCost: cost,
+            createdAt: r.created_at?.toISOString?.() ?? r.created_at,
+            updatedAt: r.updated_at?.toISOString?.() ?? r.updated_at,
+            submittedAt: r.submitted_at?.toISOString?.() ?? r.submitted_at,
+            finalizedAt: r.finalized_at?.toISOString?.() ?? r.finalized_at,
+          };
+        }),
+        total: totalMessages,
         limit,
         offset,
+        summary: {
+          totalMessages,
+          sentCount,
+          deliveredCount,
+          submittedCount,
+          failedCount,
+          uncertainCount,
+          skippedCount,
+          cancelledCount,
+          deliveryRate,
+          totalSpendLkr: totalSpendLkr.toFixed(2),
+          totalSavedLkr: totalSavedLkr.toFixed(2),
+          unitPriceLkr: 0.6,
+        },
       };
     });
   }
