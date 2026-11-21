@@ -74,8 +74,8 @@ export function RegisterPage() {
       <main className="mx-auto max-w-2xl px-6 py-10 animate-rise">
         <Card>
           <CardHeader>
-            <h1 className="text-2xl font-semibold text-slate-900">Register your dispensary</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <h1 className="text-2xl font-semibold text-foreground">Register your dispensary</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
               Submissions require DartCodes administrator approval before a clinic schema is created.
             </p>
           </CardHeader>
@@ -128,7 +128,7 @@ export function RegisterPage() {
                   error={form.formState.errors.confirmPassword?.message}
                   {...form.register('confirmPassword')}
                 />
-                <label className="flex items-start gap-2 text-sm text-slate-700">
+                <label className="flex items-start gap-2 text-sm text-foreground">
                   <input type="checkbox" className="mt-1" {...form.register('acceptTerms')} />
                   <span>I accept the HelloDoc terms and privacy notice for clinic registration.</span>
                 </label>

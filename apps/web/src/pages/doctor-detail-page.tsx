@@ -49,6 +49,8 @@ export function DoctorDetailPage() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const load = async () => {
     if (!id) return;
@@ -73,6 +75,23 @@ export function DoctorDetailPage() {
     void load();
   }, [id]);
 
+  const reviewCredentials = async (status: 'VERIFIED' | 'SUSPENDED') => {
+    if (!doctor) return;
+    setReviewing(true);
+    setReviewError(null);
+    try {
+      await api(`/clinic/doctors/${doctor.id}/credential-review`, {
+        method: 'POST',
+        json: { status },
+      });
+      await load();
+    } catch (err) {
+      setReviewError(err instanceof ApiError ? err.message : 'Could not update signing status');
+    } finally {
+      setReviewing(false);
+    }
+  };
+
   if (error) return <p className="text-sm text-destructive">{error}</p>;
   if (!doctor) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
@@ -82,9 +101,45 @@ export function DoctorDetailPage() {
         <div>
           <h1 className="text-2xl font-semibold">{doctor.displayName}</h1>
           <p className="text-sm text-muted-foreground">{doctor.fullName}</p>
-          <div className="mt-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge tone={doctor.status === 'ACTIVE' ? 'active' : 'suspended'}>{doctor.status}</Badge>
+            <Badge
+              tone={
+                doctor.credentialReviewStatus === 'VERIFIED'
+                  ? 'active'
+                  : doctor.credentialReviewStatus === 'SUSPENDED'
+                    ? 'suspended'
+                    : 'pending'
+              }
+            >
+              {doctor.credentialReviewStatus === 'VERIFIED'
+                ? 'Verified to sign'
+                : doctor.credentialReviewStatus === 'SUSPENDED'
+                  ? 'Signing suspended'
+                  : 'Pending verification'}
+            </Badge>
+            {doctor.credentialReviewStatus === 'VERIFIED' ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={reviewing}
+                onClick={() => void reviewCredentials('SUSPENDED')}
+              >
+                Suspend signing
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                disabled={reviewing}
+                onClick={() => void reviewCredentials('VERIFIED')}
+              >
+                Verify for signing
+              </Button>
+            )}
           </div>
+          {reviewError ? <p className="mt-2 text-sm text-destructive">{reviewError}</p> : null}
         </div>
         <div className="flex gap-2">
           <Button

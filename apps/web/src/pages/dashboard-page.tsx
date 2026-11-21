@@ -203,7 +203,7 @@ export function DashboardPage() {
             </Link>
           </Button>
 
-          <Button asChild size="sm" className="h-9 cursor-pointer">
+          <Button asChild size="sm" className="h-9 cursor-pointer text-white hover:text-white">
             <Link to="/sessions">
               <Plus className="mr-1.5 size-3.5" />
               New Session

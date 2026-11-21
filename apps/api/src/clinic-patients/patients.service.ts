@@ -223,33 +223,50 @@ export class PatientsService {
     const sortDir = query.sortDir === 'asc' ? 'ASC' : 'DESC';
     const sortCol =
       sortBy === 'name'
-        ? 'lower(full_name)'
+        ? 'lower(p.full_name)'
         : sortBy === 'patientNumber'
-          ? 'patient_number'
-          : 'created_at';
+          ? 'p.patient_number'
+          : 'p.created_at';
 
     const params: unknown[] = [];
     const where: string[] = [];
     if (status !== 'ALL') {
       params.push(status);
-      where.push(`status = $${params.length}`);
+      where.push(`p.status = $${params.length}`);
     }
     if (q) {
       params.push(`%${q.toLowerCase()}%`);
       const qIdx = params.length;
       const cleanDigits = q.replace(/[^0-9]/g, '');
-      if (cleanDigits.length >= 3) {
+      if (cleanDigits.length >= 2) {
         params.push(`%${cleanDigits}%`);
         const digitIdx = params.length;
+        const altDigits =
+          cleanDigits.startsWith('0') && cleanDigits.length > 1
+            ? `94${cleanDigits.slice(1)}`
+            : cleanDigits.startsWith('94') && cleanDigits.length > 2
+              ? `0${cleanDigits.slice(2)}`
+              : cleanDigits;
+        params.push(`%${altDigits}%`);
+        const altIdx = params.length;
+
         where.push(
-          `(lower(full_name) LIKE $${qIdx} OR lower(coalesce(preferred_name,'')) LIKE $${qIdx} OR lower(patient_number) LIKE $${qIdx} OR EXISTS (
+          `(lower(p.full_name) LIKE $${qIdx} OR lower(coalesce(p.preferred_name,'')) LIKE $${qIdx} OR lower(p.patient_number) LIKE $${qIdx} OR EXISTS (
             SELECT 1 FROM ${ctx.quotedSchema}.patient_contacts c
-            WHERE c.patient_id = patients.id AND (c.normalized_value LIKE $${digitIdx} OR c.raw_value LIKE $${qIdx})
+            WHERE c.patient_id = p.id AND (
+              c.display_value ILIKE $${qIdx}
+              OR c.normalized_value LIKE $${digitIdx}
+              OR c.normalized_value LIKE $${altIdx}
+              OR regexp_replace(c.display_value, '[^0-9]', '', 'g') LIKE $${digitIdx}
+            )
           ))`,
         );
       } else {
         where.push(
-          `(lower(full_name) LIKE $${qIdx} OR lower(coalesce(preferred_name,'')) LIKE $${qIdx} OR lower(patient_number) LIKE $${qIdx})`,
+          `(lower(p.full_name) LIKE $${qIdx} OR lower(coalesce(p.preferred_name,'')) LIKE $${qIdx} OR lower(p.patient_number) LIKE $${qIdx} OR EXISTS (
+            SELECT 1 FROM ${ctx.quotedSchema}.patient_contacts c
+            WHERE c.patient_id = p.id AND c.display_value ILIKE $${qIdx}
+          ))`,
         );
       }
     }
@@ -258,14 +275,14 @@ export class PatientsService {
 
     return this.sql.withClient(async (client) => {
       const result = await client.query<PatientRow>(
-        `SELECT * FROM ${ctx.quotedSchema}.patients
+        `SELECT p.* FROM ${ctx.quotedSchema}.patients p
          ${whereSql}
          ORDER BY ${sortCol} ${sortDir}
          LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params,
       );
       const count = await client.query<{ count: string }>(
-        `SELECT count(*)::text AS count FROM ${ctx.quotedSchema}.patients ${whereSql}`,
+        `SELECT count(*)::text AS count FROM ${ctx.quotedSchema}.patients p ${whereSql}`,
         params.slice(0, params.length - 2),
       );
       const contacts = await this.loadContacts(
@@ -310,18 +327,35 @@ export class PatientsService {
       params.push(`%${q.toLowerCase()}%`);
       const qIdx = params.length;
       const cleanDigits = q.replace(/[^0-9]/g, '');
-      if (cleanDigits.length >= 3) {
+      if (cleanDigits.length >= 2) {
         params.push(`%${cleanDigits}%`);
         const digitIdx = params.length;
+        const altDigits =
+          cleanDigits.startsWith('0') && cleanDigits.length > 1
+            ? `94${cleanDigits.slice(1)}`
+            : cleanDigits.startsWith('94') && cleanDigits.length > 2
+              ? `0${cleanDigits.slice(2)}`
+              : cleanDigits;
+        params.push(`%${altDigits}%`);
+        const altIdx = params.length;
+
         where.push(
           `(lower(p.full_name) LIKE $${qIdx} OR lower(coalesce(p.preferred_name,'')) LIKE $${qIdx} OR lower(p.patient_number) LIKE $${qIdx} OR EXISTS (
             SELECT 1 FROM ${ctx.quotedSchema}.patient_contacts c
-            WHERE c.patient_id = p.id AND (c.normalized_value LIKE $${digitIdx} OR c.raw_value LIKE $${qIdx})
+            WHERE c.patient_id = p.id AND (
+              c.display_value ILIKE $${qIdx}
+              OR c.normalized_value LIKE $${digitIdx}
+              OR c.normalized_value LIKE $${altIdx}
+              OR regexp_replace(c.display_value, '[^0-9]', '', 'g') LIKE $${digitIdx}
+            )
           ))`,
         );
       } else {
         where.push(
-          `(lower(p.full_name) LIKE $${qIdx} OR lower(coalesce(p.preferred_name,'')) LIKE $${qIdx} OR lower(p.patient_number) LIKE $${qIdx})`,
+          `(lower(p.full_name) LIKE $${qIdx} OR lower(coalesce(p.preferred_name,'')) LIKE $${qIdx} OR lower(p.patient_number) LIKE $${qIdx} OR EXISTS (
+            SELECT 1 FROM ${ctx.quotedSchema}.patient_contacts c
+            WHERE c.patient_id = p.id AND c.display_value ILIKE $${qIdx}
+          ))`,
         );
       }
     }
