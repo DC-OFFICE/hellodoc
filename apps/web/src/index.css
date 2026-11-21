@@ -3,13 +3,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Default 80% compact enterprise scale for desktop & laptop displays */
-@media (min-width: 640px) {
-  html {
-    zoom: 0.8;
-  }
-}
-
 /* Light — clean SaaS white / soft gray, teal accent */
 :root {
   --background: #ffffff;
