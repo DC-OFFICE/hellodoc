@@ -23,8 +23,6 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { user, loading, setUser } = useClinicAuth();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [mfaToken, setMfaToken] = useState<string | null>(null);
-  const [mfaCode, setMfaCode] = useState('');
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: '', password: '' },
@@ -45,14 +43,10 @@ export function LoginPage() {
   const onSubmit = form.handleSubmit(async (values) => {
     setServerError(null);
     try {
-      const result = await api<{ user?: ClinicUser; mfaRequired?: boolean; mfaToken?: string }>(
+      const result = await api<{ user?: ClinicUser }>(
         '/clinic-auth/login',
         { method: 'POST', json: values },
       );
-      if (result.mfaRequired && result.mfaToken) {
-        setMfaToken(result.mfaToken);
-        return;
-      }
       if (!result.user) throw new Error('Login failed');
       setUser(result.user);
       navigate(
@@ -99,45 +93,6 @@ export function LoginPage() {
                 autoComplete="current-password"
                 {...form.register('password')}
               />
-              {mfaToken ? (
-                <div className="space-y-3">
-                  <Label htmlFor="mfa">Authentication code</Label>
-                  <Input
-                    id="mfa"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    value={mfaCode}
-                    onChange={(event) => setMfaCode(event.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      setServerError(null);
-                      try {
-                        const result = await api<{ user: ClinicUser }>('/clinic-auth/mfa/verify', {
-                          method: 'POST',
-                          json: { mfaToken, code: mfaCode },
-                        });
-                        setUser(result.user);
-                        navigate(
-                          result.user.role === 'clinic_doctor'
-                            ? '/doctor/worklist'
-                            : result.user.role === 'clinic_cashier'
-                              ? '/billing/invoices'
-                              : result.user.role === 'clinic_receptionist'
-                                ? '/patients'
-                                : '/dashboard',
-                          { replace: true },
-                        );
-                      } catch (error) {
-                        setServerError(error instanceof ApiError ? error.message : 'Code was not accepted');
-                      }
-                    }}
-                  >
-                    Verify code
-                  </Button>
-                </div>
-              ) : null}
               {serverError ? <p className="text-sm text-red-700">{serverError}</p> : null}
               <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? 'Signing in…' : 'Sign in'}

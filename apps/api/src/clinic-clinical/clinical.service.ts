@@ -205,8 +205,9 @@ export class ClinicalService {
     return this.sql.withClient(async (client) => {
       const rows = await client.query(
         `SELECT a.id AS appointment_id, a.queue_number, a.status AS appointment_status,
-                p.id AS patient_id, p.full_name, p.patient_number,
-                s.id AS session_id, s.local_date, s.start_at, s.status AS session_status,
+                p.id AS patient_id, p.full_name, p.patient_number, p.sex, p.date_of_birth, p.approximate_age_years,
+                (SELECT display_value FROM ${ctx.quotedSchema}.patient_contacts pc WHERE pc.patient_id = p.id AND pc.is_primary = TRUE LIMIT 1) AS phone,
+                s.id AS session_id, s.local_date, s.start_at, s.end_at, s.status AS session_status,
                 q.state AS queue_state, e.id AS encounter_id, e.status AS encounter_status
          FROM ${ctx.quotedSchema}.appointments a
          JOIN ${ctx.quotedSchema}.consultation_sessions s ON s.id = a.session_id

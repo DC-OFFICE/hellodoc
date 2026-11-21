@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   Plus,
   RefreshCw,
-  ShieldAlert,
   Sparkles,
   UserPlus,
 } from 'lucide-react';
@@ -225,41 +224,19 @@ export function DashboardPage() {
 
       {/* Error state */}
       {loadError ? (
-        loadError.code === 'MFA_ENROLLMENT_REQUIRED' ||
-        loadError.message.toLowerCase().includes('multi-factor') ? (
-          <Card className="border-amber-500/30 bg-amber-500/10 shadow-xs">
-            <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 text-sm text-amber-950 dark:text-amber-200">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                  <ShieldAlert className="size-5" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">Two-Factor Authentication (MFA) Required</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    This live environment requires two-factor authentication before viewing clinical operations and patient data. Please set up your authenticator app in Account Security to unlock the dashboard.
-                  </p>
-                </div>
-              </div>
-              <Button asChild size="sm" className="shrink-0 cursor-pointer">
-                <Link to="/settings/security">Set Up Authenticator Now</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="border-destructive/30 bg-destructive/10">
-            <CardContent className="flex items-center justify-between p-4 text-sm text-destructive">
-              <span>{loadError.message}</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void loadMetrics()}
-              >
-                Retry
-              </Button>
-            </CardContent>
-          </Card>
-        )
+        <Card className="border-destructive/30 bg-destructive/10">
+          <CardContent className="flex items-center justify-between p-4 text-sm text-destructive">
+            <span>{loadError.message}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadMetrics()}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* KPI Cards Grid */}

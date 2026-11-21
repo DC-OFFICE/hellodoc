@@ -12,7 +12,6 @@ import {
   Receipt,
   Settings,
   Settings2,
-  ShieldCheck,
   Stethoscope,
   Tag,
   Users,
@@ -80,12 +79,9 @@ const cashierNav = [
 const managerSettingsNav = [
   { title: 'SMS Settings', to: '/settings/notifications', icon: Settings2 },
   { title: 'Billing settings', to: '/settings/billing', icon: Settings2 },
-  { title: 'Account security', to: '/settings/security', icon: ShieldCheck },
 ] as const;
 
-const staffSettingsNav = [
-  { title: 'Account security', to: '/settings/security', icon: ShieldCheck },
-] as const;
+const staffSettingsNav: readonly { title: string; to: string; icon: typeof Settings2 }[] = [];
 
 function initials(name: string) {
   return name

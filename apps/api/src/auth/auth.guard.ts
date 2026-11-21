@@ -65,28 +65,6 @@ export class AuthGuard implements CanActivate {
       }
     }
 
-    if (process.env.MFA_REQUIRED === 'true' && session.context === 'clinic') {
-      const url = req.originalUrl ?? req.url;
-      const exempt = [
-        '/clinic-auth/mfa/',
-        '/clinic-auth/me',
-        '/clinic-auth/logout',
-        '/health',
-      ].some((path) => url.includes(path));
-      if (!exempt) {
-        const rows = await this.prisma.$queryRawUnsafe<Array<{ confirmed_at: Date | null }>>(
-          `SELECT confirmed_at FROM platform.user_mfa WHERE user_id = $1::uuid`,
-          session.userId,
-        );
-        if (!rows[0]?.confirmed_at) {
-          throw new ForbiddenException({
-            code: 'MFA_ENROLLMENT_REQUIRED',
-            message: 'Multi-factor authentication must be enabled before this action',
-          });
-        }
-      }
-    }
-
     req.session = session;
     return true;
   }

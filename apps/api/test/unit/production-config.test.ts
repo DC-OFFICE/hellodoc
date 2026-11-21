@@ -4,7 +4,6 @@ import { assertProductionConfig } from '../../src/common/production-config.js';
 
 const safe = {
   NODE_ENV: 'production',
-  MFA_REQUIRED: 'true',
   SMS_PAYLOAD_ENCRYPTION_KEY: 'a'.repeat(48),
   CORS_ORIGIN: 'https://app.example.com',
   PUBLIC_WEB_ORIGIN: 'https://app.example.com',
@@ -14,20 +13,19 @@ const safe = {
 
 describe('production configuration', () => {
   it('allows local development without production controls', () => {
-    assert.deepEqual(assertProductionConfig({ NODE_ENV: 'development', MFA_REQUIRED: 'false' }), []);
+    assert.deepEqual(assertProductionConfig({ NODE_ENV: 'development' }), []);
   });
 
-  it('refuses a production boot that would skip MFA or use a development secret', () => {
+  it('refuses a production boot that would use a development secret or invalid origins', () => {
     const problems = assertProductionConfig({
       ...safe,
-      MFA_REQUIRED: 'false',
       SMS_PAYLOAD_ENCRYPTION_KEY: 'dev-only-change-me',
       CORS_ORIGIN: 'http://localhost:5173',
       PUBLIC_WEB_ORIGIN: 'http://localhost:5173',
       SMS_PROVIDER: 'fake',
       SMS_DISPATCH_ENABLED: 'true',
     });
-    assert.equal(problems.length, 5);
+    assert.equal(problems.length, 4);
   });
 
   it('accepts an explicit production configuration', () => {
