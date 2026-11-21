@@ -25,6 +25,7 @@ type DoctorRow = {
   contact_number: string | null;
   email: string | null;
   status: 'ACTIVE' | 'INACTIVE';
+  credential_review_status: 'PENDING_REVIEW' | 'VERIFIED' | 'SUSPENDED';
   created_at: Date;
   updated_at: Date;
   created_by: string;
@@ -45,6 +46,7 @@ function mapDoctor(row: DoctorRow) {
     contactNumber: row.contact_number,
     email: row.email,
     status: row.status,
+    credentialReviewStatus: row.credential_review_status,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     createdBy: row.created_by,

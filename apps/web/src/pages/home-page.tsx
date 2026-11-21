@@ -19,11 +19,11 @@ export function HomePage() {
         }
       />
       <main className="mx-auto max-w-6xl px-6 py-14 animate-rise">
-        <p className="mb-3 text-sm font-semibold tracking-wide text-teal-700 uppercase">HelloDoc SaaS</p>
-        <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+        <p className="mb-3 text-sm font-semibold tracking-wide text-primary uppercase">HelloDoc SaaS</p>
+        <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
           Clinic registration and secure tenant foundation
         </h1>
-        <p className="mt-5 max-w-2xl text-lg text-slate-600">
+        <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
           Register your dispensary, wait for DartCodes approval, then access your isolated clinic workspace.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
@@ -39,8 +39,8 @@ export function HomePage() {
           ].map(([title, body]) => (
             <Card key={title}>
               <CardContent>
-                <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{body}</p>
+                <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
               </CardContent>
             </Card>
           ))}

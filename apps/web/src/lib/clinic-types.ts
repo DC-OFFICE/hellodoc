@@ -10,6 +10,7 @@ export type Doctor = {
   contactNumber: string | null;
   email: string | null;
   status: 'ACTIVE' | 'INACTIVE';
+  credentialReviewStatus?: 'PENDING_REVIEW' | 'VERIFIED' | 'SUSPENDED';
   version: number;
   createdAt: string;
   updatedAt: string;

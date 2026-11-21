@@ -700,7 +700,11 @@ export class ClinicalService {
       return result.rows[0];
     });
     if (row?.credential_review_status !== 'VERIFIED') {
-      deny('CLINICAL_ACCESS_DENIED', 'Doctor credentials are not verified for signing', 'forbidden');
+      deny(
+        'CLINICAL_ACCESS_DENIED',
+        'A clinic manager must verify this doctor before consultations can be signed',
+        'forbidden',
+      );
     }
   }
 
