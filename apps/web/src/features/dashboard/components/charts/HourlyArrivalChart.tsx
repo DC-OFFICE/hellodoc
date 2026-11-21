@@ -10,7 +10,7 @@ export function HourlyArrivalChart({ data }: HourlyArrivalChartProps) {
   const maxCount = Math.max(...data.map((d) => d.count), 1);
 
   return (
-    <Card className="shadow-xs">
+    <Card className="flex h-full flex-col shadow-xs">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
@@ -23,7 +23,7 @@ export function HourlyArrivalChart({ data }: HourlyArrivalChartProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="pt-2">
+      <CardContent className="flex flex-1 flex-col justify-end pt-2">
         <div className="flex h-36 items-end justify-between gap-1.5 pt-4">
           {data.map((item) => {
             const heightPct = Math.max((item.count / maxCount) * 100, 4);

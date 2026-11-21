@@ -11,12 +11,12 @@ export function PatientVolumeChart({ data }: PatientVolumeChartProps) {
 
   if (!data || data.length === 0) {
     return (
-      <Card>
+      <Card className="flex h-full flex-col shadow-xs">
         <CardHeader>
           <CardTitle className="text-base font-semibold">Patient Visit Trends</CardTitle>
           <CardDescription>Daily consultation volume and completions</CardDescription>
         </CardHeader>
-        <CardContent className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+        <CardContent className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           No appointment trend data for this selection.
         </CardContent>
       </Card>
@@ -28,8 +28,8 @@ export function PatientVolumeChart({ data }: PatientVolumeChartProps) {
   const paddingY = 20;
 
   return (
-    <Card className="shadow-xs">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+    <Card className="flex h-full flex-col shadow-xs">
+      <CardHeader className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="text-base font-semibold">Patient Visit Trends</CardTitle>
           <CardDescription>Daily consultation volume and completions</CardDescription>
@@ -50,8 +50,8 @@ export function PatientVolumeChart({ data }: PatientVolumeChartProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="pt-2">
-        <div className="relative">
+      <CardContent className="flex flex-1 flex-col justify-between pt-2">
+        <div className="relative flex flex-1 flex-col justify-between">
           {/* Active tooltip on hover */}
           {hoveredIdx !== null && data[hoveredIdx] ? (
             <div
@@ -155,7 +155,7 @@ export function PatientVolumeChart({ data }: PatientVolumeChartProps) {
           </div>
 
           {/* X Axis Date labels */}
-          <div className="mt-2 flex justify-between text-[11px] text-muted-foreground px-1">
+          <div className={`mt-2 flex text-[11px] text-muted-foreground px-1 ${data.length === 1 ? 'justify-center' : 'justify-between'}`}>
             {data.length <= 7
               ? data.map((d) => <span key={d.date}>{d.date.slice(5)}</span>)
               : [

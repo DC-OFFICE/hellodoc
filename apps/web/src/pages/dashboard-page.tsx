@@ -251,10 +251,10 @@ export function DashboardPage() {
       {metrics ? (
         <>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
+            <div className="flex flex-col lg:col-span-2">
               <PatientVolumeChart data={metrics.volumeTrends} />
             </div>
-            <div>
+            <div className="flex flex-col">
               <RevenueBreakdownChart
                 cash={metrics.kpis.cashCollected}
                 card={metrics.kpis.cardCollected}
@@ -265,8 +265,12 @@ export function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <DoctorWorkloadChart doctors={metrics.doctorWorkload} />
-            <HourlyArrivalChart data={metrics.hourlyDistribution} />
+            <div className="flex flex-col">
+              <DoctorWorkloadChart doctors={metrics.doctorWorkload} />
+            </div>
+            <div className="flex flex-col">
+              <HourlyArrivalChart data={metrics.hourlyDistribution} />
+            </div>
           </div>
         </>
       ) : null}
