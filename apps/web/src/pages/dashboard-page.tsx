@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom';
 import {
   Plus,
   RefreshCw,
+  ShieldAlert,
   Sparkles,
   UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useClinicAuth } from '@/lib/auth';
 import type { Doctor, ConsultationSession } from '@/lib/clinic-types';
 import { DashboardFilterBar } from '@/features/dashboard/components/DashboardFilterBar';
@@ -71,7 +72,7 @@ export function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ message: string; code?: string } | null>(null);
 
   // Load clinic metadata, doctors and sessions for filter dropdowns
   useEffect(() => {
@@ -125,7 +126,10 @@ export function DashboardPage() {
         const data = await api<DashboardMetricsResponse>(`/clinic/dashboard/metrics?${params}`);
         setMetrics(data);
       } catch (err) {
-        setLoadError(err instanceof Error ? err.message : 'Failed to load dashboard metrics');
+        setLoadError({
+          message: err instanceof Error ? err.message : 'Failed to load dashboard metrics',
+          code: err instanceof ApiError ? err.code : undefined,
+        });
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -221,19 +225,41 @@ export function DashboardPage() {
 
       {/* Error state */}
       {loadError ? (
-        <Card className="border-destructive/30 bg-destructive/10">
-          <CardContent className="flex items-center justify-between p-4 text-sm text-destructive">
-            <span>{loadError}</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void loadMetrics()}
-            >
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
+        loadError.code === 'MFA_ENROLLMENT_REQUIRED' ||
+        loadError.message.toLowerCase().includes('multi-factor') ? (
+          <Card className="border-amber-500/30 bg-amber-500/10 shadow-xs">
+            <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 text-sm text-amber-950 dark:text-amber-200">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                  <ShieldAlert className="size-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Two-Factor Authentication (MFA) Required</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    This live environment requires two-factor authentication before viewing clinical operations and patient data. Please set up your authenticator app in Account Security to unlock the dashboard.
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm" className="shrink-0 cursor-pointer">
+                <Link to="/settings/security">Set Up Authenticator Now</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-destructive/30 bg-destructive/10">
+            <CardContent className="flex items-center justify-between p-4 text-sm text-destructive">
+              <span>{loadError.message}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadMetrics()}
+              >
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        )
       ) : null}
 
       {/* KPI Cards Grid */}

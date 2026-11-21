@@ -17,9 +17,11 @@ export function clearCsrfCache() {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -64,7 +66,8 @@ export async function api<T>(
         : rawMessage && typeof rawMessage === 'object' && 'message' in rawMessage
           ? String((rawMessage as { message: unknown }).message)
           : 'Request failed';
-    throw new ApiError(res.status, message);
+    const code = typeof payload?.code === 'string' ? payload.code : undefined;
+    throw new ApiError(res.status, message, code);
   }
 
   return payload as T;
