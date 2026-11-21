@@ -47,7 +47,7 @@ test('doctor: worklist, draft, sign, prescription, print', async ({ page }) => {
   const printResponse = page.waitForResponse(
     (response) => response.url().includes('/clinic/prescriptions/') && response.url().includes('/print'),
   );
-  await page.getByRole('button', { name: 'Print prescription' }).click();
+  await page.getByRole('button', { name: 'Print / Save PDF' }).click();
   const response = await printResponse;
   expect(response.status()).toBe(200);
   const html = (await response.text()).toLowerCase();

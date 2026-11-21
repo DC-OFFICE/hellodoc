@@ -1,9 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Calendar, MessageSquare, Plus, Receipt, Shield, Stethoscope, User } from 'lucide-react';
+import {
+  Calendar,
+  ChevronDown,
+  FileText,
+  MessageSquare,
+  Plus,
+  Receipt,
+  Shield,
+  Stethoscope,
+  User,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -19,7 +30,9 @@ import {
   displayPatientAge,
   formatRegisteredDate,
 } from '@/features/patients/utils/patient-display';
+import { PrintDocumentButton } from '@/components/print-document-button';
 import { api, ApiError, openProtectedDocument } from '@/lib/api';
+import { useClinicAuth } from '@/lib/auth';
 import type { Patient } from '@/lib/clinic-types';
 
 type AuditItem = {
@@ -64,11 +77,34 @@ type InvoiceRow = {
 type EncounterRow = {
   id: string;
   appointment_id: string;
+  session_id: string;
+  doctor_id: string;
   status: string;
   chief_complaint: string | null;
+  history_present_illness: string | null;
+  examination_findings: string | null;
   assessment: string | null;
+  treatment_plan: string | null;
+  follow_up_instructions: string | null;
   signed_at: string | null;
   created_at: string;
+  doctor_name: string;
+  doctor_specialization: string | null;
+  session_date: string;
+  session_start_at: string;
+  session_end_at: string;
+  booking_reference: string;
+  queue_number: number;
+  appointment_status: string;
+  queue_display: string;
+  latest_vitals: {
+    systolic_mmhg: number | null;
+    diastolic_mmhg: number | null;
+    pulse_bpm: number | null;
+    temperature_c: string | number | null;
+    recorded_at: string;
+  } | null;
+  prescription: { id: string; status: string; version: number } | null;
 };
 
 type ClinicalHistory = {
@@ -79,6 +115,33 @@ type ClinicalHistory = {
     items: Array<{ substance: string; reaction: string | null; severity?: string | null }>;
   };
 };
+
+function formatSessionDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatSessionTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function noteField(label: string, value: string | null | undefined) {
+  if (!value?.trim()) return null;
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{value}</p>
+    </div>
+  );
+}
 
 function statusTone(status: string) {
   const s = status.toUpperCase();
@@ -96,6 +159,7 @@ function statusTone(status: string) {
 
 export function PatientDetailPage() {
   const { id } = useParams();
+  const { user } = useClinicAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [audit, setAudit] = useState<AuditItem[]>([]);
   const [sms, setSms] = useState<SmsRow[]>([]);
@@ -139,6 +203,50 @@ export function PatientDetailPage() {
   useEffect(() => {
     void load();
   }, [id]);
+
+  const visitsByDate = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        date: string;
+        sessions: Map<
+          string,
+          {
+            sessionId: string;
+            doctorName: string;
+            doctorSpecialization: string | null;
+            startAt: string;
+            endAt: string;
+            encounters: EncounterRow[];
+          }
+        >;
+      }
+    >();
+
+    for (const encounter of clinical?.encounters ?? []) {
+      const dateKey = String(encounter.session_date).slice(0, 10);
+      if (!groups.has(dateKey)) {
+        groups.set(dateKey, { date: dateKey, sessions: new Map() });
+      }
+      const day = groups.get(dateKey)!;
+      if (!day.sessions.has(encounter.session_id)) {
+        day.sessions.set(encounter.session_id, {
+          sessionId: encounter.session_id,
+          doctorName: encounter.doctor_name,
+          doctorSpecialization: encounter.doctor_specialization,
+          startAt: encounter.session_start_at,
+          endAt: encounter.session_end_at,
+          encounters: [],
+        });
+      }
+      day.sessions.get(encounter.session_id)!.encounters.push(encounter);
+    }
+
+    return [...groups.values()].map((day) => ({
+      date: day.date,
+      sessions: [...day.sessions.values()],
+    }));
+  }, [clinical?.encounters]);
 
   if (error) return <p className="text-sm text-destructive">{error}</p>;
   if (!patient) return <p className="text-sm text-muted-foreground">Loading patient record…</p>;
@@ -403,51 +511,220 @@ export function PatientDetailPage() {
             </CardHeader>
             <CardContent className="text-sm">
               <p className="font-medium">
-                Status: <Badge tone={clinical?.allergies.status === 'NO_KNOWN_ALLERGIES' ? 'active' : 'pending'}>{clinical?.allergies.status ?? 'UNKNOWN'}</Badge>
+                Status:{' '}
+                <Badge tone={clinical?.allergies.status === 'NO_KNOWN_ALLERGIES' ? 'active' : 'pending'}>
+                  {clinical?.allergies.status ?? 'UNKNOWN'}
+                </Badge>
               </p>
               {clinical?.allergies.items && clinical.allergies.items.length > 0 ? (
                 <div className="mt-3 space-y-1">
                   {clinical.allergies.items.map((item, idx) => (
-                    <div key={idx} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                    <div
+                      key={idx}
+                      className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                    >
                       <strong>{item.substance}</strong>: {item.reaction ?? 'Reaction unspecified'}
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground mt-2">No known specific drug or food allergies recorded.</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  No known specific drug or food allergies recorded.
+                </p>
               )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Consultations & Diagnosis Notes</CardTitle>
-              <CardDescription>Clinical assessments and doctor notes recorded during visits.</CardDescription>
+              <CardTitle className="text-base">Visit medical history</CardTitle>
+              <CardDescription>
+                Consultations grouped by date, appointment session, and attending doctor. Expand a visit to review the clinical note.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {!clinical?.encounters || clinical.encounters.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No signed consultations recorded yet.</p>
+            <CardContent className="space-y-4">
+              {visitsByDate.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No consultations recorded for this patient yet.
+                </p>
               ) : (
-                clinical.encounters.map((enc) => (
-                  <div key={enc.id} className="rounded-lg border p-4 space-y-2 bg-muted/10">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{new Date(enc.created_at).toLocaleDateString()}</span>
-                      <Badge tone={statusTone(enc.status)}>{enc.status}</Badge>
+                visitsByDate.map((day) => (
+                  <div key={day.date} className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="size-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-foreground">{formatSessionDate(day.date)}</h3>
+                      <span className="text-xs text-muted-foreground">
+                        {day.sessions.reduce((count, session) => count + session.encounters.length, 0)} visit
+                        {day.sessions.reduce((count, session) => count + session.encounters.length, 0) === 1 ? '' : 's'}
+                      </span>
                     </div>
-                    {enc.chief_complaint ? (
-                      <p className="text-sm">
-                        <strong className="text-muted-foreground font-medium">Chief Complaint:</strong> {enc.chief_complaint}
-                      </p>
-                    ) : null}
-                    {enc.assessment ? (
-                      <p className="text-sm">
-                        <strong className="text-primary font-semibold">Diagnosis / Assessment:</strong>{' '}
-                        <span className="font-medium text-foreground">{enc.assessment}</span>
-                      </p>
-                    ) : null}
+
+                    {day.sessions.map((session) => (
+                      <div key={session.sessionId} className="overflow-hidden rounded-xl border border-border bg-card">
+                        <div className="border-b border-border bg-muted/40 px-4 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-foreground">{session.doctorName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {session.doctorSpecialization ? `${session.doctorSpecialization} · ` : ''}
+                                Session {formatSessionTime(session.startAt)} – {formatSessionTime(session.endAt)}
+                              </p>
+                            </div>
+                            <Badge tone="default">Appointment session</Badge>
+                          </div>
+                        </div>
+
+                        <div className="divide-y divide-border">
+                          {session.encounters.map((encounter, index) => (
+                            <Collapsible key={encounter.id} defaultOpen={day.date === visitsByDate[0]?.date && index === 0}>
+                              <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/30">
+                                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-semibold text-foreground">
+                                      Queue {encounter.queue_display || String(encounter.queue_number).padStart(3, '0')}
+                                    </span>
+                                    <Badge tone={statusTone(encounter.status)}>{encounter.status}</Badge>
+                                    {encounter.prescription ? (
+                                      <Badge tone={encounter.prescription.status === 'SIGNED' ? 'active' : 'pending'}>
+                                        Rx {encounter.prescription.status}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                    {encounter.booking_reference}
+                                    {encounter.chief_complaint ? ` · ${encounter.chief_complaint}` : ' · No chief complaint recorded'}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {encounter.signed_at
+                                    ? new Date(encounter.signed_at).toLocaleString()
+                                    : new Date(encounter.created_at).toLocaleString()}
+                                </span>
+                              </CollapsibleTrigger>
+
+                              <CollapsibleContent>
+                                <div className="space-y-3 border-t border-border bg-muted/10 px-4 py-4">
+                                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                    <span className="rounded-md border border-border bg-background px-2 py-1">
+                                      Doctor: {encounter.doctor_name}
+                                    </span>
+                                    <span className="rounded-md border border-border bg-background px-2 py-1">
+                                      Date: {formatSessionDate(String(encounter.session_date).slice(0, 10))}
+                                    </span>
+                                    <span className="rounded-md border border-border bg-background px-2 py-1">
+                                      Appointment: {encounter.appointment_status}
+                                    </span>
+                                  </div>
+
+                                  {encounter.latest_vitals ? (
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">BP</p>
+                                        <p className="text-sm font-semibold">
+                                          {encounter.latest_vitals.systolic_mmhg ?? '—'}/
+                                          {encounter.latest_vitals.diastolic_mmhg ?? '—'}
+                                        </p>
+                                      </div>
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pulse</p>
+                                        <p className="text-sm font-semibold">{encounter.latest_vitals.pulse_bpm ?? '—'}</p>
+                                      </div>
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Temp</p>
+                                        <p className="text-sm font-semibold">{encounter.latest_vitals.temperature_c ?? '—'}</p>
+                                      </div>
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recorded</p>
+                                        <p className="text-xs font-medium">
+                                          {new Date(encounter.latest_vitals.recorded_at).toLocaleTimeString([], {
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                  <div className="grid gap-3 md:grid-cols-2">
+                                    {noteField('Chief complaint', encounter.chief_complaint)}
+                                    {noteField('History of present illness', encounter.history_present_illness)}
+                                    {noteField('Examination findings', encounter.examination_findings)}
+                                    {noteField('Assessment / diagnosis', encounter.assessment)}
+                                    {noteField('Treatment plan', encounter.treatment_plan)}
+                                    {noteField('Follow-up', encounter.follow_up_instructions)}
+                                  </div>
+
+                                  {!encounter.chief_complaint &&
+                                  !encounter.history_present_illness &&
+                                  !encounter.examination_findings &&
+                                  !encounter.assessment &&
+                                  !encounter.treatment_plan &&
+                                  !encounter.follow_up_instructions ? (
+                                    <p className="text-sm text-muted-foreground">No clinical notes were recorded for this visit.</p>
+                                  ) : null}
+
+                                  <div className="flex flex-wrap gap-2 pt-1">
+                                    {user?.role === 'clinic_doctor' &&
+                                    (encounter.status === 'SIGNED' || encounter.status === 'DRAFT') ? (
+                                      <Button asChild size="sm" variant="outline">
+                                        <Link to={`/consultations/${encounter.id}`}>
+                                          <FileText className="mr-1.5 size-3.5" />
+                                          Open consultation
+                                        </Link>
+                                      </Button>
+                                    ) : null}
+                                    {encounter.prescription?.status === 'SIGNED' ? (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() =>
+                                          void openProtectedDocument(
+                                            `/clinic/prescriptions/${encounter.prescription!.id}/print`,
+                                            { autoPrint: true },
+                                          ).catch((err) =>
+                                            setError(
+                                              err instanceof ApiError
+                                                ? err.message
+                                                : err instanceof Error
+                                                  ? err.message
+                                                  : 'Unable to open prescription',
+                                            ),
+                                          )
+                                        }
+                                      >
+                                        Print prescription PDF
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </CollapsibleContent>
+                            </Collapsible>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))
               )}
+
+              {clinical?.history && clinical.history.length > 0 ? (
+                <div className="space-y-2 border-t border-border pt-4">
+                  <h3 className="text-sm font-semibold text-foreground">Background medical notes</h3>
+                  {clinical.history.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge tone="default">{item.category}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(item.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-foreground">{item.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
@@ -504,15 +781,13 @@ export function PatientDetailPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs"
-                            onClick={() => void openProtectedDocument(`/clinic/invoices/${inv.id}/print`)}
-                          >
-                            Print bill
-                          </Button>
+                          <PrintDocumentButton
+                            path={`/clinic/invoices/${inv.id}/print`}
+                            label="Print bill"
+                            title={`Invoice ${inv.invoiceNumber ?? 'draft'}`}
+                            description="Preview this bill on this page, then print or save it as a PDF."
+                            className="h-8 text-xs"
+                          />
                         </TableCell>
                       </TableRow>
                     ))

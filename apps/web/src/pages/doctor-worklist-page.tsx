@@ -466,7 +466,7 @@ export function DoctorWorklistPage() {
                                 asChild
                                 size="sm"
                                 variant={item.encounter_status === 'SIGNED' ? 'outline' : 'default'}
-                                className="h-8 text-xs cursor-pointer gap-1.5"
+                                className={`h-8 cursor-pointer gap-1.5 text-xs ${item.encounter_status === 'SIGNED' ? '' : 'text-white hover:text-white'}`}
                               >
                                 <Link to={`/consultations/${item.encounter_id}`}>
                                   {item.encounter_status === 'SIGNED' ? (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -116,6 +117,22 @@ export function CreateSessionDialog({
 
   const onSubmit = form.handleSubmit(async (values) => {
     setError(null);
+    const startLocal = new Date(`${values.localDate}T${values.startTime}:00+05:30`);
+    const endLocal = new Date(`${values.localDate}T${values.endTime}:00+05:30`);
+    if (Number.isNaN(startLocal.getTime()) || Number.isNaN(endLocal.getTime())) {
+      setError('Enter a valid consultation date and time.');
+      return;
+    }
+    if (endLocal.getTime() <= startLocal.getTime()) {
+      setError('End time must be after start time.');
+      return;
+    }
+    if (endLocal.getTime() <= Date.now()) {
+      setError(
+        'This session time has already ended in Asia/Colombo. Choose a later end time or date.',
+      );
+      return;
+    }
     try {
       const created = await api<ConsultationSession>('/clinic/sessions', {
         method: 'POST',
@@ -239,7 +256,12 @@ export function CreateSessionDialog({
         </div>
       </section>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      ) : null}
     </form>
   );
 

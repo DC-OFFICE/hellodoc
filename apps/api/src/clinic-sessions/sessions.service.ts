@@ -167,7 +167,7 @@ export class SessionsService {
       }
 
       const bounds = await this.resolveBounds(client, dto.localDate, dto.startTime, dto.endTime, timezone);
-      this.assertFuture(bounds.startAt);
+      this.assertNotEnded(bounds.startAt, bounds.endAt);
       this.assertMinLength(bounds.startAt, bounds.endAt);
 
       const id = randomUUID();
@@ -231,7 +231,7 @@ export class SessionsService {
         dto.endTime,
         existing.rows[0].timezone || DEFAULT_TZ,
       );
-      this.assertFuture(bounds.startAt);
+      this.assertNotEnded(bounds.startAt, bounds.endAt);
       this.assertMinLength(bounds.startAt, bounds.endAt);
 
       try {
@@ -333,9 +333,15 @@ export class SessionsService {
     }
   }
 
-  private assertFuture(startAt: Date) {
-    if (startAt.getTime() <= Date.now()) {
-      throw new BadRequestException('Session start must be in the future');
+  private assertNotEnded(startAt: Date, endAt: Date) {
+    const now = Date.now();
+    if (endAt.getTime() <= now) {
+      throw new BadRequestException(
+        'This session time has already ended. Choose a later end time or date (Asia/Colombo).',
+      );
+    }
+    if (startAt.getTime() > endAt.getTime()) {
+      throw new BadRequestException('Session start must be before the end time');
     }
   }
 
