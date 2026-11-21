@@ -17,12 +17,9 @@ SET "passwordHash" = EXCLUDED."passwordHash",
 
 -- Seed Platform Admin Role
 INSERT INTO "platform"."PlatformAdmin" ("id", "userId", "active", "createdAt")
-VALUES (
-    '00000000-0000-0000-0000-000000000001',
-    '00000000-0000-0000-0000-000000000001',
-    true,
-    CURRENT_TIMESTAMP
-)
+SELECT gen_random_uuid(), u."id", true, CURRENT_TIMESTAMP
+FROM "platform"."PlatformUser" u
+WHERE u."emailNormalized" = 'admin@dartcodes.lk'
 ON CONFLICT ("userId") DO UPDATE
 SET "active" = true;
 

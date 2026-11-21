@@ -54,15 +54,15 @@ export function DoctorDetailPage() {
     void load();
   }, [id]);
 
-  if (error) return <p className="text-sm text-red-700">{error}</p>;
-  if (!doctor) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (error) return <p className="text-sm text-destructive">{error}</p>;
+  if (!doctor) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">{doctor.displayName}</h1>
-          <p className="text-sm text-slate-600">{doctor.fullName}</p>
+          <p className="text-sm text-muted-foreground">{doctor.fullName}</p>
           <div className="mt-2">
             <Badge tone={doctor.status === 'ACTIVE' ? 'active' : 'suspended'}>{doctor.status}</Badge>
           </div>
@@ -81,11 +81,11 @@ export function DoctorDetailPage() {
         <Card>
           <CardHeader><h2 className="font-semibold">Profile</h2></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p><span className="text-slate-500">Registration:</span> {doctor.registrationNumber ?? '—'}</p>
-            <p><span className="text-slate-500">Specialization:</span> {doctor.specialization ?? '—'}</p>
-            <p><span className="text-slate-500">Qualifications:</span> {doctor.qualifications ?? '—'}</p>
-            <p><span className="text-slate-500">Phone:</span> {doctor.contactNumber ?? '—'}</p>
-            <p><span className="text-slate-500">Email:</span> {doctor.email ?? '—'}</p>
+            <p><span className="text-muted-foreground">Registration:</span> {doctor.registrationNumber ?? '—'}</p>
+            <p><span className="text-muted-foreground">Specialization:</span> {doctor.specialization ?? '—'}</p>
+            <p><span className="text-muted-foreground">Qualifications:</span> {doctor.qualifications ?? '—'}</p>
+            <p><span className="text-muted-foreground">Phone:</span> {doctor.contactNumber ?? '—'}</p>
+            <p><span className="text-muted-foreground">Email:</span> {doctor.email ?? '—'}</p>
           </CardContent>
         </Card>
 
@@ -93,7 +93,7 @@ export function DoctorDetailPage() {
           <CardHeader><h2 className="font-semibold">Upcoming sessions</h2></CardHeader>
           <CardContent>
             {upcoming.length === 0 ? (
-              <p className="text-sm text-slate-500">No upcoming sessions.</p>
+              <p className="text-sm text-muted-foreground">No upcoming sessions.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -180,7 +180,7 @@ export function DoctorDetailPage() {
               <Input type="number" value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
             </div>
           </div>
-          {scheduleMsg ? <p className="text-sm text-teal-800">{scheduleMsg}</p> : null}
+          {scheduleMsg ? <p className="text-sm text-primary">{scheduleMsg}</p> : null}
           <Button
             type="button"
             disabled={saving || selectedDays.length === 0 || doctor.status !== 'ACTIVE'}

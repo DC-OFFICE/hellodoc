@@ -123,8 +123,8 @@ export function AppointmentsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Appointments</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-semibold text-foreground">Appointments</h1>
+          <p className="text-sm text-muted-foreground">
             Book patients into consultation sessions and manage queue numbers.
           </p>
         </div>
@@ -136,17 +136,17 @@ export function AppointmentsPage() {
       <Card>
         <CardHeader className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
           <div>
-            <label className="mb-1 block text-xs text-slate-500">From</label>
+            <label className="mb-1 block text-xs text-muted-foreground">From</label>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">To</label>
+            <label className="mb-1 block text-xs text-muted-foreground">To</label>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Doctor</label>
+            <label className="mb-1 block text-xs text-muted-foreground">Doctor</label>
             <select
-              className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background text-foreground px-3 text-sm shadow-xs focus:outline-hidden focus:ring-1 focus:ring-ring"
               value={doctorId}
               onChange={(e) => setDoctorId(e.target.value)}
             >
@@ -159,9 +159,9 @@ export function AppointmentsPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Status</label>
+            <label className="mb-1 block text-xs text-muted-foreground">Status</label>
             <select
-              className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background text-foreground px-3 text-sm shadow-xs focus:outline-hidden focus:ring-1 focus:ring-ring"
               value={status}
               onChange={(e) => setStatus(e.target.value as typeof status)}
             >
@@ -211,7 +211,7 @@ export function AppointmentsPage() {
           ) : null}
           {error ? (
             <div className="space-y-2">
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="text-sm text-destructive">{error}</p>
               <Button type="button" variant="secondary" onClick={() => void load()}>
                 Retry
               </Button>
@@ -219,7 +219,7 @@ export function AppointmentsPage() {
           ) : null}
           {!loading && !error && items.length === 0 ? (
             <div className="py-10 text-center">
-              <p className="text-sm text-slate-500">No appointments found for these filters.</p>
+              <p className="text-sm text-muted-foreground">No appointments found for these filters.</p>
               <Button
                 type="button"
                 variant="secondary"
@@ -252,8 +252,8 @@ export function AppointmentsPage() {
                         {item.queueDisplay}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-slate-900">{item.patientFullName}</div>
-                        <div className="font-mono text-xs text-slate-500">{item.patientNumber}</div>
+                        <div className="font-medium text-foreground">{item.patientFullName}</div>
+                        <div className="font-mono text-xs text-muted-foreground">{item.patientNumber}</div>
                       </TableCell>
                       <TableCell>{item.doctorDisplayName ?? '—'}</TableCell>
                       <TableCell>{item.localDate ?? '—'}</TableCell>

@@ -100,11 +100,23 @@ export function PlatformAdminPage() {
   }, [clinicTab, clinicOffset, clinicLimit]);
 
   const reload = useCallback(async () => {
-    await Promise.all([loadRegistrations(), loadClinics()]);
+    setActionError(null);
+    const results = await Promise.allSettled([loadRegistrations(), loadClinics()]);
+    const rejections = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (rejections.length > 0) {
+      const firstReason = rejections[0].reason;
+      const msg =
+        firstReason instanceof ApiError
+          ? firstReason.message
+          : firstReason instanceof Error
+            ? firstReason.message
+            : 'Failed to load platform data';
+      setActionError(msg);
+    }
   }, [loadRegistrations, loadClinics]);
 
   useEffect(() => {
-    void reload().catch(() => setActionError('Failed to load platform data'));
+    void reload();
   }, [reload]);
 
   const stats = [
@@ -137,7 +149,14 @@ export function PlatformAdminPage() {
         ))}
       </div>
 
-      {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+      {actionError ? (
+        <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+          <span>{actionError}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => void reload()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
 
       <Tabs value={section} onValueChange={(value) => setSection(value as typeof section)}>
         <TabsList>

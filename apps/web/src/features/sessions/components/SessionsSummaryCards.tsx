@@ -24,14 +24,14 @@ function SummaryCard({
   return (
     <Card className="shadow-none">
       <CardContent className="flex items-start gap-3 py-4">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-teal-50 text-teal-800">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400">
           <Icon className="size-4" />
         </div>
         <div className="min-w-0">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             {label}
           </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{value}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>
         </div>
       </CardContent>

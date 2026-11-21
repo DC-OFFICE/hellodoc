@@ -546,11 +546,11 @@ export function PatientFormDialog({
                   ? 'Shared family phone number'
                   : 'Similar patients found'}
             </AlertTitle>
-            <AlertDescription className="text-amber-800">
+            <AlertDescription className="text-amber-800 dark:text-amber-200">
               <ul className="mt-2 space-y-1.5 text-xs">
                 {matches.map((m) => (
-                  <li key={m.id} className="rounded border border-amber-200 bg-white/80 p-2">
-                    <span className="font-semibold text-slate-900">{m.fullName}</span>{' '}
+                  <li key={m.id} className="rounded border border-amber-500/20 bg-card p-2 text-card-foreground">
+                    <span className="font-semibold text-foreground">{m.fullName}</span>{' '}
                     <span className="font-mono text-muted-foreground">({m.patientNumber})</span>
                     <span className="block text-muted-foreground">
                       {m.reasons.join(' · ')}

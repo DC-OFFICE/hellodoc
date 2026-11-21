@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { CurrentSession, Public, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
@@ -76,6 +76,24 @@ export class BillingController {
     @Body() dto: UpdateServiceDto,
   ) {
     return this.clinicContext.resolve(session).then((ctx) => this.billing.updateService(ctx, id, dto));
+  }
+
+  @Roles('clinic_manager', 'clinic_cashier')
+  @Get('clinic/billing/services/:id')
+  getService(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.clinicContext.resolveFinance(session).then((ctx) => this.billing.getService(ctx, id));
+  }
+
+  @Roles('clinic_manager')
+  @Delete('clinic/billing/services/:id')
+  deleteService(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.clinicContext.resolve(session).then((ctx) => this.billing.deleteService(ctx, id));
   }
 
   @Roles('clinic_manager', 'clinic_cashier')

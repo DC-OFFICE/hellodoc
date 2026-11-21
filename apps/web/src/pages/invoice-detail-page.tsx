@@ -45,14 +45,14 @@ export function InvoiceDetailPage() {
     });
   }, [id]);
 
-  if (!invoice) return <p className="text-sm text-slate-600">{error ?? 'Loading invoice…'}</p>;
+  if (!invoice) return <p className="text-sm text-muted-foreground">{error ?? 'Loading invoice…'}</p>;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
       <Card className="shadow-none">
         <CardHeader>
           <h1 className="text-xl font-semibold">{invoice.invoiceNumber ?? 'Draft invoice'}</h1>
-          <p className="text-sm text-slate-600">{invoice.patientName} · {invoice.patientNumber}</p>
+          <p className="text-sm text-muted-foreground">{invoice.patientName} · {invoice.patientNumber}</p>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <p>Status: {invoice.status} · Settlement: {invoice.settlement}</p>
@@ -96,13 +96,13 @@ export function InvoiceDetailPage() {
           {invoice.payments.map((payment) => (
             <p key={payment.id}>
               {payment.receipt_number} · {payment.method} · LKR {payment.amount}{' '}
-              <button className="text-teal-800 underline" type="button" onClick={() => void openProtectedDocument(`/clinic/payments/${payment.id}/receipt`)}>
+              <button className="text-primary underline" type="button" onClick={() => void openProtectedDocument(`/clinic/payments/${payment.id}/receipt`)}>
                 Reprint receipt
               </button>
             </p>
           ))}
-          {error ? <p className="text-red-700">{error}</p> : null}
-          {message ? <p className="text-teal-800">{message}</p> : null}
+          {error ? <p className="text-destructive">{error}</p> : null}
+          {message ? <p className="text-primary">{message}</p> : null}
         </CardContent>
       </Card>
       {invoice.status === 'ISSUED' && invoice.balance !== '0.00' ? (

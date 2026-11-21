@@ -39,7 +39,7 @@ export function SessionsCalendarView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-slate-900">Week view</p>
+          <p className="text-sm font-semibold text-foreground">Week view</p>
           <p className="text-xs text-muted-foreground">{weekLabel} · Asia/Colombo</p>
         </div>
         <div className="flex items-center gap-2">
@@ -81,12 +81,12 @@ export function SessionsCalendarView({
             <div
               key={date}
               className={cn(
-                'min-h-40 rounded-lg border bg-white p-2',
-                isToday && 'border-teal-300 ring-1 ring-teal-100',
+                'min-h-40 rounded-lg border bg-card text-card-foreground p-2',
+                isToday && 'border-primary/40 ring-1 ring-primary/20',
               )}
             >
               <div className="mb-2 flex items-center justify-between gap-1">
-                <p className="text-xs font-semibold text-slate-700">
+                <p className="text-xs font-semibold text-foreground">
                   {new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', {
                     weekday: 'short',
                     day: 'numeric',
@@ -111,11 +111,11 @@ export function SessionsCalendarView({
                       type="button"
                       onClick={() => onSelectSession?.(session.id)}
                       className={cn(
-                        'block w-full rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:bg-teal-50 cursor-pointer',
-                        session.status === 'CANCELLED' && 'border-red-100 bg-red-50/50 opacity-80',
+                        'block w-full rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground cursor-pointer',
+                        session.status === 'CANCELLED' && 'border-destructive/20 bg-destructive/10 opacity-80',
                       )}
                     >
-                      <p className="truncate font-medium text-slate-900">
+                      <p className="truncate font-medium text-foreground">
                         {session.doctorDisplayName}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
@@ -138,7 +138,7 @@ export function SessionsCalendarView({
         {days.map((date) => {
           const daySessions = byDate.get(date) ?? [];
           return (
-            <div key={date} className="rounded-lg border bg-white p-3">
+            <div key={date} className="rounded-lg border bg-card text-card-foreground p-3">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm font-semibold">
                   {new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', {

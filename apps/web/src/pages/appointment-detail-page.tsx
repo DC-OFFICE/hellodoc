@@ -61,8 +61,8 @@ export function AppointmentDetailPage() {
       .catch(() => setSessions([]));
   }, [showReschedule, appointment?.doctorId, appointment?.sessionId]);
 
-  if (error) return <p className="text-sm text-red-700">{error}</p>;
-  if (!appointment) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (error) return <p className="text-sm text-destructive">{error}</p>;
+  if (!appointment) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   const onCancel = async () => {
     if (cancelReason.trim().length < 3) return;
@@ -105,10 +105,10 @@ export function AppointmentDetailPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-xs tracking-wide text-slate-500">
+          <p className="font-mono text-xs tracking-wide text-muted-foreground">
             {appointment.bookingReference}
           </p>
-          <h1 className="text-3xl font-semibold tracking-wider text-teal-800">
+          <h1 className="text-3xl font-semibold tracking-wider text-primary">
             Queue #{appointment.queueDisplay}
           </h1>
           <div className="mt-2">
@@ -187,9 +187,9 @@ export function AppointmentDetailPage() {
         </div>
       </div>
 
-      {copyMsg ? <p className="text-sm text-teal-700">{copyMsg}</p> : null}
+      {copyMsg ? <p className="text-sm text-primary">{copyMsg}</p> : null}
       {trackingUrl ? (
-        <p className="break-all rounded-md border border-border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p className="break-all rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {trackingUrl}
         </p>
       ) : null}
@@ -215,13 +215,13 @@ export function AppointmentDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
-              <span className="text-slate-500">Doctor:</span> {appointment.doctorDisplayName}
+              <span className="text-muted-foreground">Doctor:</span> {appointment.doctorDisplayName}
             </p>
             <p>
-              <span className="text-slate-500">Date:</span> {appointment.localDate}
+              <span className="text-muted-foreground">Date:</span> {appointment.localDate}
             </p>
             <p>
-              <span className="text-slate-500">Time:</span>{' '}
+              <span className="text-muted-foreground">Time:</span>{' '}
               {appointment.startAt
                 ? new Date(appointment.startAt).toLocaleTimeString('en-US', {
                     hour: '2-digit',
@@ -253,26 +253,26 @@ export function AppointmentDetailPage() {
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
           <p>
-            <span className="text-slate-500">Source:</span> {appointment.bookingSource}
+            <span className="text-muted-foreground">Source:</span> {appointment.bookingSource}
           </p>
           <p>
-            <span className="text-slate-500">Created:</span>{' '}
+            <span className="text-muted-foreground">Created:</span>{' '}
             {new Date(appointment.createdAt).toLocaleString()}
           </p>
           {appointment.internalNotes ? (
             <p className="sm:col-span-2">
-              <span className="text-slate-500">Notes:</span> {appointment.internalNotes}
+              <span className="text-muted-foreground">Notes:</span> {appointment.internalNotes}
             </p>
           ) : null}
           {appointment.cancellationReason ? (
             <p className="sm:col-span-2">
-              <span className="text-slate-500">Cancellation:</span> {appointment.cancellationReason}
+              <span className="text-muted-foreground">Cancellation:</span> {appointment.cancellationReason}
             </p>
           ) : null}
           {appointment.rescheduledFromId ? (
             <p className="sm:col-span-2">
-              <span className="text-slate-500">Rescheduled from:</span>{' '}
-              <Link className="text-teal-700 underline" to={`/appointments/${appointment.rescheduledFromId}`}>
+              <span className="text-muted-foreground">Rescheduled from:</span>{' '}
+              <Link className="text-primary underline" to={`/appointments/${appointment.rescheduledFromId}`}>
                 previous appointment
               </Link>
             </p>
@@ -286,7 +286,7 @@ export function AppointmentDetailPage() {
             <h2 className="font-semibold">Cancel appointment</h2>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted-foreground">
               Queue number {appointment.queueDisplay} remains reserved and will not be reused.
             </p>
             <div>
@@ -318,7 +318,7 @@ export function AppointmentDetailPage() {
             <div>
               <Label>New session</Label>
               <select
-                className="h-9 w-full rounded-md border border-input bg-white px-3 text-sm"
+                className="h-9 w-full rounded-md border border-input bg-background text-foreground px-3 text-sm shadow-xs focus:outline-hidden focus:ring-1 focus:ring-ring"
                 value={newSessionId}
                 onChange={(e) => setNewSessionId(e.target.value)}
               >

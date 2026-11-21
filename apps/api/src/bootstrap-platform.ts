@@ -1,4 +1,5 @@
 import argon2 from 'argon2';
+import { sealSecret } from './common/secret-box.js';
 import { PrismaPlatformService } from './platform/prisma-platform.service.js';
 
 const DEFAULT_SPECIALIZATIONS = [
@@ -132,6 +133,44 @@ export async function bootstrapPlatform(prisma: PrismaPlatformService): Promise<
         });
       }
       console.log(`[Bootstrap] Seeded ${DEFAULT_RELATIONSHIPS.length} relationships`);
+    }
+
+    // 5. Seed default SMSLenz Gateway configuration if unconfigured or missing credentials
+    try {
+      const existingGateway = await prisma.platformSmsGateway.findUnique({
+        where: { id: 'default' },
+      });
+      if (!existingGateway || !existingGateway.userId || !existingGateway.apiKeyCiphertext) {
+        const defaultApiKey = 'b706c1f8-0231-4d15-bb1a-d4616f3e3ef6';
+        const sealed = sealSecret(defaultApiKey);
+        await prisma.platformSmsGateway.upsert({
+          where: { id: 'default' },
+          update: {
+            enabled: true,
+            baseUrl: 'https://smslenz.lk',
+            userId: '1862',
+            senderId: 'DARTCODES',
+            connectionTimeoutMs: 30000,
+            readTimeoutMs: 30000,
+            apiKeyCiphertext: sealed.ciphertext,
+            apiKeyNonce: sealed.nonce,
+          },
+          create: {
+            id: 'default',
+            enabled: true,
+            baseUrl: 'https://smslenz.lk',
+            userId: '1862',
+            senderId: 'DARTCODES',
+            connectionTimeoutMs: 30000,
+            readTimeoutMs: 30000,
+            apiKeyCiphertext: sealed.ciphertext,
+            apiKeyNonce: sealed.nonce,
+          },
+        });
+        console.log('[Bootstrap] Seeded default SMSLenz gateway configuration (User ID: 1862, Sender ID: DARTCODES)');
+      }
+    } catch (gatewayErr) {
+      console.warn('[Bootstrap] Note: Could not auto-seed SMS gateway credentials:', gatewayErr instanceof Error ? gatewayErr.message : gatewayErr);
     }
   } catch (error) {
     console.error('[Bootstrap] Failed to bootstrap platform defaults:', error);

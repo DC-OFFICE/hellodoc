@@ -223,24 +223,24 @@ export function InvoiceFormDialog({
       </div>
 
       {rx && rx.items.length > 0 ? (
-        <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-3 text-xs space-y-2">
-          <div className="flex items-center gap-1.5 font-semibold text-teal-900">
-            <Pill className="size-4 text-teal-700" />
+        <div className="rounded-lg border border-teal-500/20 bg-teal-500/10 p-3 text-xs space-y-2">
+          <div className="flex items-center gap-1.5 font-semibold text-teal-700 dark:text-teal-300">
+            <Pill className="size-4 text-teal-600 dark:text-teal-400" />
             <span>Prescribed Medications from Doctor</span>
           </div>
           <div className="grid gap-1">
             {rx.items.map((item, idx) => (
-              <div key={idx} className="flex justify-between border-b border-teal-100 pb-1">
-                <span className="font-medium text-slate-800">
+              <div key={idx} className="flex justify-between border-b border-teal-500/20 pb-1">
+                <span className="font-medium text-foreground">
                   {item.medicine_name} {item.strength ?? ''}
                 </span>
-                <span className="text-slate-600">
+                <span className="text-muted-foreground">
                   {item.dose ?? ''} {item.frequency ? `· ${item.frequency}` : ''} {item.duration ? `· ${item.duration}` : ''}
                 </span>
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-teal-800">
+          <p className="text-[11px] text-teal-700 dark:text-teal-300">
             Review these medications above when entering the Medicines fee row below.
           </p>
         </div>
@@ -344,7 +344,7 @@ export function InvoiceFormDialog({
         </div>
         <div className="flex justify-between font-semibold text-sm text-foreground pt-1 border-t">
           <span>Grand Total:</span>
-          <span className="text-teal-700">
+          <span className="text-teal-600 dark:text-teal-400 font-semibold">
             LKR {grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>

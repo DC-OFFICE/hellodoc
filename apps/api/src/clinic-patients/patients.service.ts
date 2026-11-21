@@ -236,9 +236,22 @@ export class PatientsService {
     }
     if (q) {
       params.push(`%${q.toLowerCase()}%`);
-      where.push(
-        `(lower(full_name) LIKE $${params.length} OR lower(coalesce(preferred_name,'')) LIKE $${params.length} OR lower(patient_number) LIKE $${params.length})`,
-      );
+      const qIdx = params.length;
+      const cleanDigits = q.replace(/[^0-9]/g, '');
+      if (cleanDigits.length >= 3) {
+        params.push(`%${cleanDigits}%`);
+        const digitIdx = params.length;
+        where.push(
+          `(lower(full_name) LIKE $${qIdx} OR lower(coalesce(preferred_name,'')) LIKE $${qIdx} OR lower(patient_number) LIKE $${qIdx} OR EXISTS (
+            SELECT 1 FROM ${ctx.quotedSchema}.patient_contacts c
+            WHERE c.patient_id = patients.id AND (c.normalized_value LIKE $${digitIdx} OR c.raw_value LIKE $${qIdx})
+          ))`,
+        );
+      } else {
+        where.push(
+          `(lower(full_name) LIKE $${qIdx} OR lower(coalesce(preferred_name,'')) LIKE $${qIdx} OR lower(patient_number) LIKE $${qIdx})`,
+        );
+      }
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(limit, offset);
@@ -295,9 +308,22 @@ export class PatientsService {
     }
     if (q) {
       params.push(`%${q.toLowerCase()}%`);
-      where.push(
-        `(lower(p.full_name) LIKE $${params.length} OR lower(coalesce(p.preferred_name,'')) LIKE $${params.length} OR lower(p.patient_number) LIKE $${params.length})`,
-      );
+      const qIdx = params.length;
+      const cleanDigits = q.replace(/[^0-9]/g, '');
+      if (cleanDigits.length >= 3) {
+        params.push(`%${cleanDigits}%`);
+        const digitIdx = params.length;
+        where.push(
+          `(lower(p.full_name) LIKE $${qIdx} OR lower(coalesce(p.preferred_name,'')) LIKE $${qIdx} OR lower(p.patient_number) LIKE $${qIdx} OR EXISTS (
+            SELECT 1 FROM ${ctx.quotedSchema}.patient_contacts c
+            WHERE c.patient_id = p.id AND (c.normalized_value LIKE $${digitIdx} OR c.raw_value LIKE $${qIdx})
+          ))`,
+        );
+      } else {
+        where.push(
+          `(lower(p.full_name) LIKE $${qIdx} OR lower(coalesce(p.preferred_name,'')) LIKE $${qIdx} OR lower(p.patient_number) LIKE $${qIdx})`,
+        );
+      }
     }
     if (phoneNorm) {
       params.push(phoneNorm);

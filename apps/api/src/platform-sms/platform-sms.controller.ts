@@ -3,6 +3,7 @@ import { CurrentSession, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { NotificationsService } from '../clinic-notifications/notifications.service.js';
 import { ListNotificationsQueryDto } from '../clinic-notifications/dto/notifications.dto.js';
+import { ListClinicSmsUsageDto } from './dto/list-clinic-sms-usage.dto.js';
 import { UpdateSmsGatewayDto } from './dto/update-sms-gateway.dto.js';
 import { PlatformSmsGatewayService } from './platform-sms-gateway.service.js';
 
@@ -17,6 +18,12 @@ export class PlatformSmsController {
   @Get('sms-gateway')
   getGateway() {
     return this.gateway.getPublic();
+  }
+
+  @Roles('platform_admin')
+  @Get('sms-gateway/clinic-usage')
+  clinicUsage(@Query() query: ListClinicSmsUsageDto) {
+    return this.gateway.getClinicUsage(query);
   }
 
   @Roles('platform_admin')
