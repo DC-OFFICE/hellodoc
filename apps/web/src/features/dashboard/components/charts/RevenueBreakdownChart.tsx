@@ -30,13 +30,13 @@ export function RevenueBreakdownChart({ cash, card, bank, total }: RevenueBreakd
   const bankOffset = -(cashDash + cardDash);
 
   return (
-    <Card className="shadow-xs">
+    <Card className="flex h-full flex-col shadow-xs">
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-semibold">Payment Channels</CardTitle>
         <CardDescription>Collection breakdown by settlement method</CardDescription>
       </CardHeader>
 
-      <CardContent className="pt-2">
+      <CardContent className="flex flex-1 flex-col justify-center pt-2">
         <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
           {/* Donut SVG */}
           <div className="relative flex size-44 items-center justify-center shrink-0">

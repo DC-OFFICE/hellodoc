@@ -66,6 +66,18 @@ export class ListNotificationsQueryDto {
   patientId?: string;
 
   @IsOptional()
+  @IsString()
+  from?: string;
+
+  @IsOptional()
+  @IsString()
+  to?: string;
+
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

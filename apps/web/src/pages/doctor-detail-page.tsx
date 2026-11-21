@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { CheckCircle2, Key, Link as LinkIcon, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -30,6 +39,16 @@ export function DoctorDetailPage() {
   const [capacity, setCapacity] = useState(25);
   const [duration, setDuration] = useState(10);
   const [saving, setSaving] = useState(false);
+
+  // Doctor login modal state
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [loginPassword, setLoginPassword] = useState('DoctorPass123!');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginSuccess, setLoginSuccess] = useState(false);
+  const [submittingLogin, setSubmittingLogin] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = async () => {
     if (!id) return;
@@ -68,6 +87,20 @@ export function DoctorDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!doctor.email}
+            onClick={() => {
+              setLoginModalOpen(true);
+              setLoginSuccess(false);
+              setLoginError(null);
+            }}
+            className="gap-1.5 cursor-pointer"
+          >
+            <Key className="size-3.5 text-primary" />
+            Create Doctor Login
+          </Button>
           <Link to={`/doctors?edit=${doctor.id}`}>
             <Button type="button" variant="secondary">Edit Profile</Button>
           </Link>
@@ -76,6 +109,182 @@ export function DoctorDetailPage() {
           </Link>
         </div>
       </div>
+
+      {/* Doctor Login Creation Dialog */}
+      <Dialog open={loginModalOpen} onOpenChange={setLoginModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <UserPlus className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">Doctor Login Credentials</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Configure doctor portal access for {doctor.displayName}.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {loginSuccess ? (
+            <div className="space-y-4 py-2">
+              <div className="flex flex-col items-center justify-center text-center p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-200">
+                <CheckCircle2 className="size-10 text-emerald-600 dark:text-emerald-400 mb-2" />
+                <p className="font-bold text-sm">Doctor Login Created Successfully!</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  The doctor can now sign in at the login page and access the clinical worklist.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-1.5 text-xs font-mono">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Login URL:</span>
+                  <span className="font-semibold">{window.location.origin}/login</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Email:</span>
+                  <span className="font-semibold">{doctor.email}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Password:</span>
+                  <span className="font-semibold text-primary">{loginPassword}</span>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={() => setLoginModalOpen(false)}
+                >
+                  Done
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2 text-xs">
+              {loginError ? (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-destructive">
+                  {loginError}
+                </div>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Doctor Account Email</Label>
+                <Input value={doctor.email ?? ''} readOnly className="h-8 font-mono text-xs bg-muted/40" />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Set Initial Password *</Label>
+                <Input
+                  type="text"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="At least 10 chars, uppercase, number & symbol"
+                  className="h-8 font-mono text-xs"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Minimum 10 characters (e.g. <code>DoctorPass123!</code>).
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <Button
+                  type="button"
+                  disabled={submittingLogin || !loginPassword}
+                  onClick={async () => {
+                    if (!doctor?.id || !doctor?.email) return;
+                    if (loginPassword.length < 10) {
+                      setLoginError('Password must be at least 10 characters long');
+                      return;
+                    }
+                    setSubmittingLogin(true);
+                    setLoginError(null);
+                    try {
+                      // 1. Generate invitation
+                      const inv = await api<{ acceptUrl: string }>(`/clinic/doctors/${doctor.id}/invitations`, {
+                        method: 'POST',
+                        json: { email: doctor.email },
+                      });
+                      const token = new URL(inv.acceptUrl).searchParams.get('token');
+                      if (!token) throw new Error('Failed to retrieve invite token');
+
+                      // 2. Accept and create doctor account directly
+                      await api('/doctor/invitations/accept', {
+                        method: 'POST',
+                        json: {
+                          token,
+                          name: doctor.displayName || doctor.fullName,
+                          password: loginPassword,
+                        },
+                      });
+
+                      setLoginSuccess(true);
+                    } catch (err) {
+                      setLoginError(err instanceof ApiError ? err.message : 'Failed to create doctor login');
+                    } finally {
+                      setSubmittingLogin(false);
+                    }
+                  }}
+                  className="w-full font-semibold cursor-pointer gap-2"
+                >
+                  <Key className="size-3.5" />
+                  {submittingLogin ? 'Creating Account...' : 'Create Doctor Login Now'}
+                </Button>
+
+                <div className="relative my-2 text-center text-[11px] text-muted-foreground after:absolute after:top-1/2 after:left-0 after:right-0 after:h-px after:bg-border">
+                  <span className="relative z-10 bg-background px-2">OR</span>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={inviting}
+                  onClick={async () => {
+                    if (!doctor?.id || !doctor?.email) return;
+                    setInviting(true);
+                    setLoginError(null);
+                    try {
+                      const res = await api<{ acceptUrl: string }>(`/clinic/doctors/${doctor.id}/invitations`, {
+                        method: 'POST',
+                        json: { email: doctor.email },
+                      });
+                      setInviteUrl(res.acceptUrl);
+                      void navigator.clipboard.writeText(res.acceptUrl);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 3000);
+                    } catch (err) {
+                      setLoginError(err instanceof ApiError ? err.message : 'Could not generate invitation link');
+                    } finally {
+                      setInviting(false);
+                    }
+                  }}
+                  className="w-full text-xs gap-1.5 cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <CheckCircle2 className="size-3.5 text-emerald-600" />
+                      Link Copied to Clipboard!
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon className="size-3.5" />
+                      {inviting ? 'Generating...' : 'Copy Invite Link to Send to Doctor'}
+                    </>
+                  )}
+                </Button>
+
+                {inviteUrl ? (
+                  <div className="rounded border border-teal-500/30 bg-teal-500/10 p-2 font-mono text-[11px] break-all text-teal-900 dark:text-teal-200">
+                    {inviteUrl}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

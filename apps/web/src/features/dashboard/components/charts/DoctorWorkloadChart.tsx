@@ -9,12 +9,12 @@ interface DoctorWorkloadChartProps {
 export function DoctorWorkloadChart({ doctors }: DoctorWorkloadChartProps) {
   if (!doctors || doctors.length === 0) {
     return (
-      <Card>
+      <Card className="flex h-full flex-col shadow-xs">
         <CardHeader>
           <CardTitle className="text-base font-semibold">Doctor Workload</CardTitle>
           <CardDescription>Consultations completed per clinician</CardDescription>
         </CardHeader>
-        <CardContent className="flex h-56 items-center justify-center text-sm text-muted-foreground">
+        <CardContent className="flex h-56 flex-1 items-center justify-center text-sm text-muted-foreground">
           No doctor activity recorded for this period.
         </CardContent>
       </Card>
@@ -24,7 +24,7 @@ export function DoctorWorkloadChart({ doctors }: DoctorWorkloadChartProps) {
   const maxVal = Math.max(...doctors.map((d) => d.patientCount), 1);
 
   return (
-    <Card className="shadow-xs">
+    <Card className="flex h-full flex-col shadow-xs">
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold">Doctor Workload & Consultations</CardTitle>
         <CardDescription>Patient throughput across clinic practitioners</CardDescription>
