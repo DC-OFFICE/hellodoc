@@ -137,6 +137,7 @@ export default function App() {
                   <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
                 </Route>
 
+                <Route path="/settings" element={<Navigate to="/settings/notifications" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </PlatformAuthProvider>
