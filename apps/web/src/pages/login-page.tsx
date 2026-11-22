@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import { useClinicAuth, type ClinicUser } from '@/lib/auth';
 
 const schema = z.object({
@@ -40,29 +41,34 @@ export function LoginPage() {
     return <Navigate to={home} replace />;
   }
 
-  const onSubmit = form.handleSubmit(async (values) => {
-    setServerError(null);
-    try {
-      const result = await api<{ user?: ClinicUser }>(
-        '/clinic-auth/login',
-        { method: 'POST', json: values },
-      );
-      if (!result.user) throw new Error('Login failed');
-      setUser(result.user);
-      navigate(
-        result.user.role === 'clinic_doctor'
-          ? '/doctor/worklist'
-          : result.user.role === 'clinic_cashier'
-            ? '/billing/invoices'
-            : result.user.role === 'clinic_receptionist'
-              ? '/patients'
-              : '/dashboard',
-        { replace: true },
-      );
-    } catch (error) {
-      setServerError(error instanceof ApiError ? error.message : 'Login failed');
-    }
-  });
+  const onSubmit = form.handleSubmit(
+    async (values) => {
+      setServerError(null);
+      try {
+        const result = await api<{ user?: ClinicUser }>('/clinic-auth/login', {
+          method: 'POST',
+          json: values,
+        });
+        if (!result.user) throw new Error('Login failed');
+        setUser(result.user);
+        navigate(
+          result.user.role === 'clinic_doctor'
+            ? '/doctor/worklist'
+            : result.user.role === 'clinic_cashier'
+              ? '/billing/invoices'
+              : result.user.role === 'clinic_receptionist'
+                ? '/patients'
+                : '/dashboard',
+          { replace: true },
+        );
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'Login failed';
+        setServerError(message);
+        if (!(error instanceof ApiError)) notify.error(message);
+      }
+    },
+    (errors) => notify.formErrors(errors),
+  );
 
   return (
     <div className="min-h-screen">

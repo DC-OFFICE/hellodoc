@@ -50,7 +50,7 @@ export function AppointmentDetailPage() {
       to,
       limit: '50',
     });
-    api<{ items: ConsultationSession[] }>(`/clinic/sessions?${qs}`)
+    api<{ items: ConsultationSession[] }>(`/clinic/sessions?${qs}`, { toast: false })
       .then((data) =>
         setSessions(
           data.items.filter(

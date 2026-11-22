@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { notify } from '@/lib/notify';
 
 type TrackSnapshot = {
   revision: number;
@@ -31,6 +32,7 @@ export function PublicTrackPage() {
   const [data, setData] = useState<TrackSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<'live' | 'polling' | 'offline'>('polling');
+  const lastToastRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -39,16 +41,27 @@ export function PublicTrackPage() {
         headers: { Accept: 'application/json' },
       });
       if (!res.ok) {
-        setError('This tracking link is invalid or expired.');
+        const message = 'This tracking link is invalid or expired.';
+        setError(message);
         setData(null);
+        if (lastToastRef.current !== message) {
+          lastToastRef.current = message;
+          notify.validation(message);
+        }
         return;
       }
       const json = (await res.json()) as TrackSnapshot;
       setData(json);
       setError(null);
+      lastToastRef.current = null;
     } catch {
-      setError('Unable to refresh tracking status.');
+      const message = 'Unable to refresh tracking status.';
+      setError(message);
       setConnection('offline');
+      if (lastToastRef.current !== message) {
+        lastToastRef.current = message;
+        notify.error(message);
+      }
     }
   }, [token]);
 

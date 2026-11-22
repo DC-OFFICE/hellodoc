@@ -46,7 +46,7 @@ function statusTone(status: string, settlement: string) {
 
 export function InvoicesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') === 'pos' ? 'pos' : 'invoices';
+  const activeTab = searchParams.get('tab') === 'invoices' ? 'invoices' : 'pos';
 
   const [q, setQ] = useState('');
   const [items, setItems] = useState<InvoiceRow[]>([]);
@@ -55,8 +55,8 @@ export function InvoicesPage() {
 
   const handleTabChange = (val: string) => {
     const next = new URLSearchParams(searchParams);
-    if (val === 'pos') {
-      next.set('tab', 'pos');
+    if (val === 'invoices') {
+      next.set('tab', 'invoices');
     } else {
       next.delete('tab');
     }
@@ -137,18 +137,28 @@ export function InvoicesPage() {
       {/* Tabs Container */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList className="grid w-full max-w-xs grid-cols-2">
-          <TabsTrigger value="invoices" className="gap-1.5 cursor-pointer text-xs">
-            <FileText className="size-4" />
-            <span>Invoices</span>
-          </TabsTrigger>
           <TabsTrigger value="pos" className="gap-1.5 cursor-pointer text-xs">
             <Store className="size-4" />
             <span>POS Register</span>
           </TabsTrigger>
+          <TabsTrigger value="invoices" className="gap-1.5 cursor-pointer text-xs">
+            <FileText className="size-4" />
+            <span>Invoices</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ======================================================== */}
-        {/* TAB 1: Invoices Historical Table                         */}
+        {/* TAB 1: Point of Sale (POS) Counter UI                    */}
+        {/* ======================================================== */}
+        <TabsContent value="pos" className="space-y-4 outline-none">
+          <PosRegister
+            onInvoiceCreated={() => void load('')}
+            onSwitchToInvoices={() => handleTabChange('invoices')}
+          />
+        </TabsContent>
+
+        {/* ======================================================== */}
+        {/* TAB 2: Invoices Historical Table                         */}
         {/* ======================================================== */}
         <TabsContent value="invoices" className="space-y-4 outline-none">
           <Card className="overflow-hidden shadow-none border-border">
@@ -239,16 +249,6 @@ export function InvoicesPage() {
               </Table>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* ======================================================== */}
-        {/* TAB 2: Point of Sale (POS) Counter UI                    */}
-        {/* ======================================================== */}
-        <TabsContent value="pos" className="space-y-4 outline-none">
-          <PosRegister
-            onInvoiceCreated={() => void load('')}
-            onSwitchToInvoices={() => handleTabChange('invoices')}
-          />
         </TabsContent>
       </Tabs>
 

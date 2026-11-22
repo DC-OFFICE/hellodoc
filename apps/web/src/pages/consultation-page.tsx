@@ -6,6 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api, ApiError, openProtectedDocument } from '@/lib/api';
+import { notify } from '@/lib/notify';
+
+type Prescription = {
+  id: string;
+  status: string;
+  version: number;
+};
 
 type Encounter = {
   id: string;
@@ -19,6 +26,7 @@ type Encounter = {
   treatment_plan: string | null;
   follow_up_instructions: string | null;
   allergies: { status: string; items: Array<{ substance: string; reaction: string | null }> };
+  prescription?: Prescription | null;
   vitals?: Array<{
     id: string;
     systolic_mmhg: number | null;
@@ -26,12 +34,6 @@ type Encounter = {
     pulse_bpm: number | null;
     temperature_c: string | number | null;
   }>;
-};
-
-type Prescription = {
-  id: string;
-  status: string;
-  version: number;
 };
 
 const noteClass =
@@ -62,6 +64,7 @@ export function ConsultationPage() {
     if (!id) return;
     const data = await api<Encounter>(`/clinic/encounters/${id}`);
     setEncounter(data);
+    if (data.prescription) setPrescription(data.prescription);
   };
 
   useEffect(() => {
@@ -361,14 +364,25 @@ export function ConsultationPage() {
                   disabled={!prescription || prescription.status !== 'SIGNED'}
                   onClick={async () => {
                     if (!prescription) return;
+                    setError(null);
                     try {
-                      await openProtectedDocument(`/clinic/prescriptions/${prescription.id}/print`);
+                      await openProtectedDocument(`/clinic/prescriptions/${prescription.id}/print`, {
+                        autoPrint: true,
+                      });
+                      setMessage('Prescription opened. Choose Save as PDF in the print dialog.');
                     } catch (err) {
-                      setError(err instanceof ApiError ? err.message : 'Print failed');
+                      const message =
+                        err instanceof ApiError
+                          ? err.message
+                          : err instanceof Error
+                            ? err.message
+                            : 'Print failed';
+                      setError(message);
+                      notify.error(message);
                     }
                   }}
                 >
-                  Print prescription
+                  Print / Save PDF
                 </Button>
               </div>
             </CardContent>

@@ -38,7 +38,7 @@ export function ClinicLayout({ title }: { title?: string }) {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    api<{ clinicName: string }>('/clinic/me')
+    api<{ clinicName: string }>('/clinic/me', { toast: false })
       .then((me) => {
         if (!cancelled) setClinicName(me.clinicName);
       })

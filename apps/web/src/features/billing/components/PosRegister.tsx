@@ -33,7 +33,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { api, ApiError, openProtectedDocument } from '@/lib/api';
+import { PrintDocumentDialog } from '@/components/print-document-button';
+import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 
 type Patient = {
   id: string;
@@ -155,6 +157,7 @@ export function PosRegister({
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
+  const [printPreview, setPrintPreview] = useState<{ path: string; title: string } | null>(null);
 
   // Load patients and billing services on mount
   useEffect(() => {
@@ -227,7 +230,7 @@ export function PosRegister({
       setRx(null);
       return;
     }
-    void api<Prescription | null>(`/clinic/appointments/${trimmed}/prescription`)
+    void api<Prescription | null>(`/clinic/appointments/${trimmed}/prescription`, { toast: false })
       .then((data) => setRx(data))
       .catch(() => setRx(null));
   }, [appointmentId]);
@@ -342,15 +345,21 @@ export function PosRegister({
   const handleChargeAndIssue = async () => {
     setError(null);
     if (!patientId) {
-      setError('Please select a patient before charging the bill.');
+      const message = 'Please select a patient before charging the bill.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (cart.length === 0) {
-      setError('Cart is empty. Please add at least one item from the catalog.');
+      const message = 'Cart is empty. Please add at least one item from the catalog.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (isShortCash) {
-      setError('Tendered cash is less than the Grand Total.');
+      const message = 'Tendered cash is less than the Grand Total.';
+      setError(message);
+      notify.validation(message);
       return;
     }
 
@@ -421,11 +430,15 @@ export function PosRegister({
   const handleSaveDraft = async () => {
     setError(null);
     if (!patientId) {
-      setError('Please select a patient before saving draft.');
+      const message = 'Please select a patient before saving draft.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (cart.length === 0) {
-      setError('Cart is empty. Please add items to invoice.');
+      const message = 'Cart is empty. Please add items to invoice.';
+      setError(message);
+      notify.validation(message);
       return;
     }
 
@@ -927,7 +940,12 @@ export function PosRegister({
       {/* MODAL: POS Receipt & Completion Dialog                   */}
       {/* ======================================================== */}
       {completedSale ? (
-        <Dialog open={true} onOpenChange={() => handleNextPatient()}>
+        <Dialog
+          open={!printPreview}
+          onOpenChange={(open) => {
+            if (!open && !printPreview) handleNextPatient();
+          }}
+        >
           <DialogContent className="sm:max-w-md">
             <DialogHeader className="text-center">
               <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 mb-2">
@@ -979,7 +997,10 @@ export function PosRegister({
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    void openProtectedDocument(`/clinic/payments/${completedSale.receiptId}/receipt`)
+                    setPrintPreview({
+                      path: `/clinic/payments/${completedSale.receiptId}/receipt`,
+                      title: `Receipt ${completedSale.receiptNumber ?? ''}`.trim(),
+                    })
                   }
                   className="gap-1.5"
                 >
@@ -992,18 +1013,21 @@ export function PosRegister({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  void openProtectedDocument(`/clinic/invoices/${completedSale.invoiceId}/print`)
+                  setPrintPreview({
+                    path: `/clinic/invoices/${completedSale.invoiceId}/print`,
+                    title: `Invoice ${completedSale.invoiceNumber}`,
+                  })
                 }
                 className="gap-1.5"
               >
                 <FileText className="size-3.5" />
-                Print Invoice
+                Print bill
               </Button>
               <Button
                 type="button"
                 size="sm"
                 onClick={handleNextPatient}
-                className="bg-primary text-primary-foreground font-semibold"
+                className="bg-primary text-primary-foreground font-semibold text-white hover:text-white"
               >
                 Next Patient
               </Button>
@@ -1011,6 +1035,16 @@ export function PosRegister({
           </DialogContent>
         </Dialog>
       ) : null}
+
+      <PrintDocumentDialog
+        open={!!printPreview}
+        onOpenChange={(open) => {
+          if (!open) setPrintPreview(null);
+        }}
+        path={printPreview?.path ?? null}
+        title={printPreview?.title ?? 'Print preview'}
+        description="Preview this bill on this page, then print or save it as a PDF."
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, HttpCode, Post, Req, Res } 
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { CLINIC_SESSION_COOKIE } from '../auth/auth.constants.js';
-import { clearSessionCookie, setSessionCookie } from '../auth/cookie.util.js';
+import { clearCsrfCookie, clearSessionCookie, setSessionCookie } from '../auth/cookie.util.js';
 import { CurrentSession, Public, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { SessionService } from '../auth/session.service.js';
@@ -66,6 +66,7 @@ export class ClinicAuthController {
     const token = req.cookies?.[CLINIC_SESSION_COOKIE] as string | undefined;
     await this.sessions.revokeSession(token);
     clearSessionCookie(res, 'clinic');
+    clearCsrfCookie(res);
     return { ok: true };
   }
 

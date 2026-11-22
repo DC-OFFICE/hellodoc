@@ -1,9 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Calendar, MessageSquare, Plus, Receipt, Shield, Stethoscope, User } from 'lucide-react';
+import {
+  Calendar,
+  ChevronDown,
+  FileText,
+  Link2,
+  MapPin,
+  MessageSquare,
+  Phone,
+  Plus,
+  Receipt,
+  Shield,
+  Stethoscope,
+  User,
+  Users,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -19,7 +34,10 @@ import {
   displayPatientAge,
   formatRegisteredDate,
 } from '@/features/patients/utils/patient-display';
+import { PrintDocumentButton } from '@/components/print-document-button';
 import { api, ApiError, openProtectedDocument } from '@/lib/api';
+import { notify } from '@/lib/notify';
+import { useClinicAuth } from '@/lib/auth';
 import type { Patient } from '@/lib/clinic-types';
 
 type AuditItem = {
@@ -64,11 +82,34 @@ type InvoiceRow = {
 type EncounterRow = {
   id: string;
   appointment_id: string;
+  session_id: string;
+  doctor_id: string;
   status: string;
   chief_complaint: string | null;
+  history_present_illness: string | null;
+  examination_findings: string | null;
   assessment: string | null;
+  treatment_plan: string | null;
+  follow_up_instructions: string | null;
   signed_at: string | null;
   created_at: string;
+  doctor_name: string;
+  doctor_specialization: string | null;
+  session_date: string;
+  session_start_at: string;
+  session_end_at: string;
+  booking_reference: string;
+  queue_number: number;
+  appointment_status: string;
+  queue_display: string;
+  latest_vitals: {
+    systolic_mmhg: number | null;
+    diastolic_mmhg: number | null;
+    pulse_bpm: number | null;
+    temperature_c: string | number | null;
+    recorded_at: string;
+  } | null;
+  prescription: { id: string; status: string; version: number } | null;
 };
 
 type ClinicalHistory = {
@@ -79,6 +120,60 @@ type ClinicalHistory = {
     items: Array<{ substance: string; reaction: string | null; severity?: string | null }>;
   };
 };
+
+type RelatedPatient = {
+  id: string;
+  patientNumber: string;
+  fullName: string;
+  preferredName: string | null;
+  status: string;
+  dateOfBirth: string | null;
+  approximateAgeYears: number | null;
+  sharedContact: {
+    displayValue: string;
+    normalizedValue: string;
+    contactType: string;
+    masked: string;
+  };
+  relationshipLabel: string;
+  contactPersonName: string | null;
+};
+
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="grid gap-1 border-b border-border/60 py-2.5 last:border-b-0 sm:grid-cols-[140px_1fr] sm:gap-4">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="text-sm text-foreground">{value || '—'}</dd>
+    </div>
+  );
+}
+
+function formatSessionDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatSessionTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function noteField(label: string, value: string | null | undefined) {
+  if (!value?.trim()) return null;
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{value}</p>
+    </div>
+  );
+}
 
 function statusTone(status: string) {
   const s = status.toUpperCase();
@@ -96,12 +191,14 @@ function statusTone(status: string) {
 
 export function PatientDetailPage() {
   const { id } = useParams();
+  const { user } = useClinicAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [audit, setAudit] = useState<AuditItem[]>([]);
   const [sms, setSms] = useState<SmsRow[]>([]);
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [clinical, setClinical] = useState<ClinicalHistory | null>(null);
+  const [related, setRelated] = useState<RelatedPatient[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState('');
@@ -111,24 +208,34 @@ export function PatientDetailPage() {
     if (!id) return;
     setError(null);
     try {
-      const [p, a, messages, appts] = await Promise.all([
+      const [p, a, messages, appts, relatedPatients] = await Promise.all([
         api<Patient>(`/clinic/patients/${id}`),
-        api<{ items: AuditItem[] }>(`/clinic/patients/${id}/audit`).catch(() => ({ items: [] })),
-        api<{ items: SmsRow[] }>(`/clinic/patients/${id}/notifications`).catch(() => ({ items: [] })),
-        api<{ items: AppointmentRow[] }>(`/clinic/appointments?patientId=${id}&limit=50`).catch(() => ({ items: [] })),
+        api<{ items: AuditItem[] }>(`/clinic/patients/${id}/audit`, { toast: false }).catch(() => ({ items: [] })),
+        api<{ items: SmsRow[] }>(`/clinic/patients/${id}/notifications`, { toast: false }).catch(() => ({
+          items: [],
+        })),
+        api<{ items: AppointmentRow[] }>(`/clinic/appointments?patientId=${id}&limit=50`, { toast: false }).catch(
+          () => ({ items: [] }),
+        ),
+        api<{ items: RelatedPatient[] }>(`/clinic/patients/${id}/related`, { toast: false }).catch(() => ({
+          items: [],
+        })),
       ]);
       setPatient(p);
       setAudit(a.items);
       setSms(messages.items);
       setAppointments(appts.items);
+      setRelated(relatedPatients.items);
 
       if (p.patientNumber) {
-        void api<{ items: InvoiceRow[] }>(`/clinic/invoices?q=${encodeURIComponent(p.patientNumber)}&limit=50`)
+        void api<{ items: InvoiceRow[] }>(`/clinic/invoices?q=${encodeURIComponent(p.patientNumber)}&limit=50`, {
+          toast: false,
+        })
           .then((inv) => setInvoices(inv.items))
           .catch(() => setInvoices([]));
       }
 
-      void api<ClinicalHistory>(`/clinic/patients/${id}/clinical-history`)
+      void api<ClinicalHistory>(`/clinic/patients/${id}/clinical-history`, { toast: false })
         .then((ch) => setClinical(ch))
         .catch(() => setClinical(null));
     } catch (err) {
@@ -139,6 +246,50 @@ export function PatientDetailPage() {
   useEffect(() => {
     void load();
   }, [id]);
+
+  const visitsByDate = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        date: string;
+        sessions: Map<
+          string,
+          {
+            sessionId: string;
+            doctorName: string;
+            doctorSpecialization: string | null;
+            startAt: string;
+            endAt: string;
+            encounters: EncounterRow[];
+          }
+        >;
+      }
+    >();
+
+    for (const encounter of clinical?.encounters ?? []) {
+      const dateKey = String(encounter.session_date).slice(0, 10);
+      if (!groups.has(dateKey)) {
+        groups.set(dateKey, { date: dateKey, sessions: new Map() });
+      }
+      const day = groups.get(dateKey)!;
+      if (!day.sessions.has(encounter.session_id)) {
+        day.sessions.set(encounter.session_id, {
+          sessionId: encounter.session_id,
+          doctorName: encounter.doctor_name,
+          doctorSpecialization: encounter.doctor_specialization,
+          startAt: encounter.session_start_at,
+          endAt: encounter.session_end_at,
+          encounters: [],
+        });
+      }
+      day.sessions.get(encounter.session_id)!.encounters.push(encounter);
+    }
+
+    return [...groups.values()].map((day) => ({
+      date: day.date,
+      sessions: [...day.sessions.values()],
+    }));
+  }, [clinical?.encounters]);
 
   if (error) return <p className="text-sm text-destructive">{error}</p>;
   if (!patient) return <p className="text-sm text-muted-foreground">Loading patient record…</p>;
@@ -285,36 +436,88 @@ export function PatientDetailPage() {
 
         {/* TAB 1: OVERVIEW */}
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Personal details</CardTitle>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <User className="size-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Personal details</CardTitle>
+                    <CardDescription>Identity and demographics on file for this patient.</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p><span className="text-muted-foreground">Full name:</span> {patient.fullName}</p>
-                <p><span className="text-muted-foreground">Preferred name:</span> {patient.preferredName ?? '—'}</p>
-                <p><span className="text-muted-foreground">Age / DOB:</span> {displayPatientAge(patient)}</p>
-                <p><span className="text-muted-foreground">Sex:</span> {patient.sex ?? '—'}</p>
-                <p><span className="text-muted-foreground">Address:</span> {patient.address ?? '—'}</p>
+              <CardContent>
+                <dl>
+                  <DetailRow label="Full name" value={patient.fullName} />
+                  <DetailRow label="Preferred name" value={patient.preferredName ?? '—'} />
+                  <DetailRow label="Age / DOB" value={displayPatientAge(patient)} />
+                  <DetailRow label="Sex" value={patient.sex ?? '—'} />
+                  <DetailRow
+                    label="Address"
+                    value={
+                      patient.address ? (
+                        <span className="inline-flex items-start gap-1.5">
+                          <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                          {patient.address}
+                        </span>
+                      ) : (
+                        '—'
+                      )
+                    }
+                  />
+                </dl>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Contact information</CardTitle>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Phone className="size-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Contact information</CardTitle>
+                    <CardDescription>Phones and guardians used for booking and SMS.</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
+              <CardContent className="space-y-3">
                 {patient.contacts.length === 0 ? (
-                  <p><span className="text-muted-foreground">Exception reason:</span> {patient.contactExceptionReason ?? '—'}</p>
+                  <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+                    No phone on file.
+                    {patient.contactExceptionReason
+                      ? ` Exception: ${patient.contactExceptionReason}`
+                      : ''}
+                  </div>
                 ) : (
                   patient.contacts.map((c) => (
-                    <p key={c.id}>
-                      <span className="text-muted-foreground">{c.contactType}:</span> {c.displayValue}
-                      {c.contactPersonName ? ` (${c.contactPersonName}` : ''}
-                      {c.relationship ? ` · ${c.relationship}` : ''}
-                      {c.contactPersonName ? ')' : ''}
-                      {c.isPrimary ? ' · primary' : ''}
-                    </p>
+                    <div
+                      key={c.id}
+                      className="rounded-xl border border-border bg-muted/20 px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge tone={c.isPrimary ? 'active' : 'default'}>{c.contactType}</Badge>
+                          {c.isPrimary ? (
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-primary">
+                              Primary
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="font-mono text-sm font-semibold text-foreground">
+                          {c.displayValue}
+                        </span>
+                      </div>
+                      {c.contactPersonName || c.relationship ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {c.contactPersonName ?? 'Contact person'}
+                          {c.relationship ? ` · ${c.relationship}` : ''}
+                        </p>
+                      ) : null}
+                    </div>
                   ))
                 )}
               </CardContent>
@@ -322,17 +525,97 @@ export function PatientDetailPage() {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Administrative details</CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Users className="size-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Related patients</CardTitle>
+                    <CardDescription>
+                      Other patient records linked by the same phone number or guardian contact.
+                    </CardDescription>
+                  </div>
+                </div>
+                <Badge tone={related.length > 0 ? 'pending' : 'default'}>
+                  {related.length} linked
+                </Badge>
+              </div>
             </CardHeader>
-            <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-              <p><span className="text-muted-foreground">Registered on:</span> {formatRegisteredDate(patient.createdAt)}</p>
-              <p><span className="text-muted-foreground">Last updated:</span> {formatRegisteredDate(patient.updatedAt)}</p>
-              {patient.deactivationReason ? (
-                <p className="sm:col-span-2 text-destructive">
-                  <span className="font-medium">Deactivation reason:</span> {patient.deactivationReason}
-                </p>
-              ) : null}
+            <CardContent>
+              {related.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
+                  <Link2 className="mx-auto size-5 text-muted-foreground" />
+                  <p className="mt-2 text-sm font-medium text-foreground">No shared-contact relationships</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    When another patient uses the same mobile or guardian number, they will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {related.map((item) => (
+                    <Link
+                      key={`${item.id}-${item.sharedContact.normalizedValue}`}
+                      to={`/patients/${item.id}`}
+                      className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/30"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-foreground">
+                            {item.preferredName || item.fullName}
+                          </p>
+                          <p className="font-mono text-[11px] text-muted-foreground">
+                            {item.patientNumber}
+                          </p>
+                        </div>
+                        <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+                      </div>
+                      <div className="mt-3 space-y-1.5 text-xs">
+                        <p className="font-medium text-primary">{item.relationshipLabel}</p>
+                        <p className="text-muted-foreground">
+                          Shared {item.sharedContact.contactType.toLowerCase()}:{' '}
+                          <span className="font-mono text-foreground">
+                            {item.sharedContact.displayValue}
+                          </span>
+                        </p>
+                        {item.contactPersonName ? (
+                          <p className="text-muted-foreground">Contact person: {item.contactPersonName}</p>
+                        ) : null}
+                        <p className="text-muted-foreground">
+                          Age:{' '}
+                          {displayPatientAge({
+                            dateOfBirth: item.dateOfBirth,
+                            approximateAgeYears: item.approximateAgeYears,
+                            ageRecordedOn: null,
+                          })}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Administrative details</CardTitle>
+              <CardDescription>Registry timestamps and record status.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-x-6 sm:grid-cols-2">
+                <DetailRow label="Registered on" value={formatRegisteredDate(patient.createdAt)} />
+                <DetailRow label="Last updated" value={formatRegisteredDate(patient.updatedAt)} />
+                {patient.deactivationReason ? (
+                  <div className="sm:col-span-2">
+                    <DetailRow
+                      label="Deactivation"
+                      value={<span className="text-destructive">{patient.deactivationReason}</span>}
+                    />
+                  </div>
+                ) : null}
+              </dl>
             </CardContent>
           </Card>
         </TabsContent>
@@ -403,51 +686,221 @@ export function PatientDetailPage() {
             </CardHeader>
             <CardContent className="text-sm">
               <p className="font-medium">
-                Status: <Badge tone={clinical?.allergies.status === 'NO_KNOWN_ALLERGIES' ? 'active' : 'pending'}>{clinical?.allergies.status ?? 'UNKNOWN'}</Badge>
+                Status:{' '}
+                <Badge tone={clinical?.allergies.status === 'NO_KNOWN_ALLERGIES' ? 'active' : 'pending'}>
+                  {clinical?.allergies.status ?? 'UNKNOWN'}
+                </Badge>
               </p>
               {clinical?.allergies.items && clinical.allergies.items.length > 0 ? (
                 <div className="mt-3 space-y-1">
                   {clinical.allergies.items.map((item, idx) => (
-                    <div key={idx} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                    <div
+                      key={idx}
+                      className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                    >
                       <strong>{item.substance}</strong>: {item.reaction ?? 'Reaction unspecified'}
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground mt-2">No known specific drug or food allergies recorded.</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  No known specific drug or food allergies recorded.
+                </p>
               )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Consultations & Diagnosis Notes</CardTitle>
-              <CardDescription>Clinical assessments and doctor notes recorded during visits.</CardDescription>
+              <CardTitle className="text-base">Visit medical history</CardTitle>
+              <CardDescription>
+                Consultations grouped by date, appointment session, and attending doctor. Expand a visit to review the clinical note.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {!clinical?.encounters || clinical.encounters.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No signed consultations recorded yet.</p>
+            <CardContent className="space-y-4">
+              {visitsByDate.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No consultations recorded for this patient yet.
+                </p>
               ) : (
-                clinical.encounters.map((enc) => (
-                  <div key={enc.id} className="rounded-lg border p-4 space-y-2 bg-muted/10">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{new Date(enc.created_at).toLocaleDateString()}</span>
-                      <Badge tone={statusTone(enc.status)}>{enc.status}</Badge>
+                visitsByDate.map((day) => (
+                  <div key={day.date} className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="size-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-foreground">{formatSessionDate(day.date)}</h3>
+                      <span className="text-xs text-muted-foreground">
+                        {day.sessions.reduce((count, session) => count + session.encounters.length, 0)} visit
+                        {day.sessions.reduce((count, session) => count + session.encounters.length, 0) === 1 ? '' : 's'}
+                      </span>
                     </div>
-                    {enc.chief_complaint ? (
-                      <p className="text-sm">
-                        <strong className="text-muted-foreground font-medium">Chief Complaint:</strong> {enc.chief_complaint}
-                      </p>
-                    ) : null}
-                    {enc.assessment ? (
-                      <p className="text-sm">
-                        <strong className="text-primary font-semibold">Diagnosis / Assessment:</strong>{' '}
-                        <span className="font-medium text-foreground">{enc.assessment}</span>
-                      </p>
-                    ) : null}
+
+                    {day.sessions.map((session) => (
+                      <div key={session.sessionId} className="overflow-hidden rounded-xl border border-border bg-card">
+                        <div className="border-b border-border bg-muted/40 px-4 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-foreground">{session.doctorName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {session.doctorSpecialization ? `${session.doctorSpecialization} · ` : ''}
+                                Session {formatSessionTime(session.startAt)} – {formatSessionTime(session.endAt)}
+                              </p>
+                            </div>
+                            <Badge tone="default">Appointment session</Badge>
+                          </div>
+                        </div>
+
+                        <div className="divide-y divide-border">
+                          {session.encounters.map((encounter, index) => (
+                            <Collapsible key={encounter.id} defaultOpen={day.date === visitsByDate[0]?.date && index === 0}>
+                              <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/30">
+                                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-semibold text-foreground">
+                                      Queue {encounter.queue_display || String(encounter.queue_number).padStart(3, '0')}
+                                    </span>
+                                    <Badge tone={statusTone(encounter.status)}>{encounter.status}</Badge>
+                                    {encounter.prescription ? (
+                                      <Badge tone={encounter.prescription.status === 'SIGNED' ? 'active' : 'pending'}>
+                                        Rx {encounter.prescription.status}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                    {encounter.booking_reference}
+                                    {encounter.chief_complaint ? ` · ${encounter.chief_complaint}` : ' · No chief complaint recorded'}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {encounter.signed_at
+                                    ? new Date(encounter.signed_at).toLocaleString()
+                                    : new Date(encounter.created_at).toLocaleString()}
+                                </span>
+                              </CollapsibleTrigger>
+
+                              <CollapsibleContent>
+                                <div className="space-y-3 border-t border-border bg-muted/10 px-4 py-4">
+                                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                    <span className="rounded-md border border-border bg-background px-2 py-1">
+                                      Doctor: {encounter.doctor_name}
+                                    </span>
+                                    <span className="rounded-md border border-border bg-background px-2 py-1">
+                                      Date: {formatSessionDate(String(encounter.session_date).slice(0, 10))}
+                                    </span>
+                                    <span className="rounded-md border border-border bg-background px-2 py-1">
+                                      Appointment: {encounter.appointment_status}
+                                    </span>
+                                  </div>
+
+                                  {encounter.latest_vitals ? (
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">BP</p>
+                                        <p className="text-sm font-semibold">
+                                          {encounter.latest_vitals.systolic_mmhg ?? '—'}/
+                                          {encounter.latest_vitals.diastolic_mmhg ?? '—'}
+                                        </p>
+                                      </div>
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pulse</p>
+                                        <p className="text-sm font-semibold">{encounter.latest_vitals.pulse_bpm ?? '—'}</p>
+                                      </div>
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Temp</p>
+                                        <p className="text-sm font-semibold">{encounter.latest_vitals.temperature_c ?? '—'}</p>
+                                      </div>
+                                      <div className="rounded-lg border border-border bg-background px-3 py-2 text-center">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recorded</p>
+                                        <p className="text-xs font-medium">
+                                          {new Date(encounter.latest_vitals.recorded_at).toLocaleTimeString([], {
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                  <div className="grid gap-3 md:grid-cols-2">
+                                    {noteField('Chief complaint', encounter.chief_complaint)}
+                                    {noteField('History of present illness', encounter.history_present_illness)}
+                                    {noteField('Examination findings', encounter.examination_findings)}
+                                    {noteField('Assessment / diagnosis', encounter.assessment)}
+                                    {noteField('Treatment plan', encounter.treatment_plan)}
+                                    {noteField('Follow-up', encounter.follow_up_instructions)}
+                                  </div>
+
+                                  {!encounter.chief_complaint &&
+                                  !encounter.history_present_illness &&
+                                  !encounter.examination_findings &&
+                                  !encounter.assessment &&
+                                  !encounter.treatment_plan &&
+                                  !encounter.follow_up_instructions ? (
+                                    <p className="text-sm text-muted-foreground">No clinical notes were recorded for this visit.</p>
+                                  ) : null}
+
+                                  <div className="flex flex-wrap gap-2 pt-1">
+                                    {user?.role === 'clinic_doctor' &&
+                                    (encounter.status === 'SIGNED' || encounter.status === 'DRAFT') ? (
+                                      <Button asChild size="sm" variant="outline">
+                                        <Link to={`/consultations/${encounter.id}`}>
+                                          <FileText className="mr-1.5 size-3.5" />
+                                          Open consultation
+                                        </Link>
+                                      </Button>
+                                    ) : null}
+                                    {encounter.prescription?.status === 'SIGNED' ? (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() =>
+                                          void openProtectedDocument(
+                                            `/clinic/prescriptions/${encounter.prescription!.id}/print`,
+                                            { autoPrint: true },
+                                          ).catch((err) => {
+                                            const message =
+                                              err instanceof ApiError
+                                                ? err.message
+                                                : err instanceof Error
+                                                  ? err.message
+                                                  : 'Unable to open prescription';
+                                            setError(message);
+                                            notify.error(message);
+                                          })
+                                        }
+                                      >
+                                        Print prescription PDF
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </CollapsibleContent>
+                            </Collapsible>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))
               )}
+
+              {clinical?.history && clinical.history.length > 0 ? (
+                <div className="space-y-2 border-t border-border pt-4">
+                  <h3 className="text-sm font-semibold text-foreground">Background medical notes</h3>
+                  {clinical.history.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge tone="default">{item.category}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(item.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-foreground">{item.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
@@ -504,15 +957,13 @@ export function PatientDetailPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs"
-                            onClick={() => void openProtectedDocument(`/clinic/invoices/${inv.id}/print`)}
-                          >
-                            Print bill
-                          </Button>
+                          <PrintDocumentButton
+                            path={`/clinic/invoices/${inv.id}/print`}
+                            label="Print bill"
+                            title={`Invoice ${inv.invoiceNumber ?? 'draft'}`}
+                            description="Preview this bill on this page, then print or save it as a PDF."
+                            className="h-8 text-xs"
+                          />
                         </TableCell>
                       </TableRow>
                     ))

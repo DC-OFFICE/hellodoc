@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { PrintDocumentButton } from '@/components/print-document-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { api, ApiError, openProtectedDocument } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 
 type Invoice = {
   id: string;
@@ -89,17 +90,26 @@ export function InvoiceDetailPage() {
                 Issue invoice
               </Button>
             ) : null}
-            <Button type="button" variant="outline" onClick={() => void openProtectedDocument(`/clinic/invoices/${id}/print`)}>
-              Print
-            </Button>
+            <PrintDocumentButton
+              path={`/clinic/invoices/${id}/print`}
+              label="Print bill"
+              title={`Invoice ${invoice.invoiceNumber ?? 'draft'}`}
+              description="Preview this bill on this page, then print or save it as a PDF."
+            />
           </div>
           {invoice.payments.map((payment) => (
-            <p key={payment.id}>
-              {payment.receipt_number} · {payment.method} · LKR {payment.amount}{' '}
-              <button className="text-primary underline" type="button" onClick={() => void openProtectedDocument(`/clinic/payments/${payment.id}/receipt`)}>
-                Reprint receipt
-              </button>
-            </p>
+            <div key={payment.id} className="flex flex-wrap items-center gap-2 text-sm">
+              <span>
+                {payment.receipt_number} · {payment.method} · LKR {payment.amount}
+              </span>
+              <PrintDocumentButton
+                path={`/clinic/payments/${payment.id}/receipt`}
+                label="Reprint receipt"
+                title={`Receipt ${payment.receipt_number}`}
+                description="Preview this receipt on this page, then print or save it as a PDF."
+                size="sm"
+              />
+            </div>
           ))}
           {error ? <p className="text-destructive">{error}</p> : null}
           {message ? <p className="text-primary">{message}</p> : null}

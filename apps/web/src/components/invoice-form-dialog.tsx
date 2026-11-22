@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 
 type Patient = { id: string; fullName: string; patientNumber: string };
 type Service = { id: string; code: string; name: string; price: string; active: boolean };
@@ -115,7 +116,7 @@ export function InvoiceFormDialog({
       setRx(null);
       return;
     }
-    void api<Prescription | null>(`/clinic/appointments/${trimmed}/prescription`)
+    void api<Prescription | null>(`/clinic/appointments/${trimmed}/prescription`, { toast: false })
       .then((data) => setRx(data))
       .catch(() => setRx(null));
   }, [appointmentId]);
@@ -167,11 +168,15 @@ export function InvoiceFormDialog({
   async function saveDraft() {
     setError(null);
     if (!patientId) {
-      setError('Please select a patient');
+      const message = 'Please select a patient';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (lines.length === 0) {
-      setError('Please add at least one line item to the invoice');
+      const message = 'Please add at least one line item to the invoice';
+      setError(message);
+      notify.validation(message);
       return;
     }
     setSaving(true);

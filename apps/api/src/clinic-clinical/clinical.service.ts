@@ -275,8 +275,21 @@ export class ClinicalService {
         [id],
       );
       const allergies = await this.allergyBundle(client, ctx.quotedSchema, encounter.patient_id as string);
+      const prescription = await client.query(
+        `SELECT id, status, version FROM ${ctx.quotedSchema}.prescriptions
+         WHERE encounter_id = $1
+         ORDER BY CASE status WHEN 'SIGNED' THEN 0 WHEN 'DRAFT' THEN 1 ELSE 2 END, created_at DESC
+         LIMIT 1`,
+        [id],
+      );
       await this.auditClinical(client, ctx, 'encounter.read', 'encounter', id);
-      return { ...encounter, vitals: vitals.rows, addenda: addenda.rows, allergies };
+      return {
+        ...encounter,
+        vitals: vitals.rows,
+        addenda: addenda.rows,
+        allergies,
+        prescription: prescription.rows[0] ?? null,
+      };
     });
   }
 
@@ -384,10 +397,56 @@ export class ClinicalService {
         if (!related.rows[0]) deny('CLINICAL_ACCESS_DENIED', 'No treatment relationship', 'forbidden');
       }
       const encounters = await client.query(
-        `SELECT id, status, chief_complaint, assessment, signed_at, created_at
-         FROM ${ctx.quotedSchema}.clinical_encounters
-         WHERE patient_id = $1 AND (status = 'SIGNED' OR ($2::text IS NOT NULL AND doctor_id = $2::uuid))
-         ORDER BY created_at DESC`,
+        `SELECT
+            e.id,
+            e.appointment_id,
+            e.session_id,
+            e.doctor_id,
+            e.status,
+            e.chief_complaint,
+            e.history_present_illness,
+            e.examination_findings,
+            e.assessment,
+            e.treatment_plan,
+            e.follow_up_instructions,
+            e.signed_at,
+            e.created_at,
+            d.display_name AS doctor_name,
+            COALESCE(d.specialization_name, d.specialization) AS doctor_specialization,
+            s.local_date AS session_date,
+            s.start_at AS session_start_at,
+            s.end_at AS session_end_at,
+            a.booking_reference,
+            a.queue_number,
+            a.status AS appointment_status,
+            lpad(a.queue_number::text, 3, '0') AS queue_display,
+            (
+              SELECT json_build_object(
+                'systolic_mmhg', v.systolic_mmhg,
+                'diastolic_mmhg', v.diastolic_mmhg,
+                'pulse_bpm', v.pulse_bpm,
+                'temperature_c', v.temperature_c,
+                'recorded_at', v.recorded_at
+              )
+              FROM ${ctx.quotedSchema}.encounter_vitals v
+              WHERE v.encounter_id = e.id
+              ORDER BY v.recorded_at DESC
+              LIMIT 1
+            ) AS latest_vitals,
+            (
+              SELECT json_build_object('id', p.id, 'status', p.status, 'version', p.version)
+              FROM ${ctx.quotedSchema}.prescriptions p
+              WHERE p.encounter_id = e.id
+              ORDER BY CASE p.status WHEN 'SIGNED' THEN 0 WHEN 'DRAFT' THEN 1 ELSE 2 END, p.created_at DESC
+              LIMIT 1
+            ) AS prescription
+         FROM ${ctx.quotedSchema}.clinical_encounters e
+         JOIN ${ctx.quotedSchema}.doctors d ON d.id = e.doctor_id
+         JOIN ${ctx.quotedSchema}.consultation_sessions s ON s.id = e.session_id
+         JOIN ${ctx.quotedSchema}.appointments a ON a.id = e.appointment_id
+         WHERE e.patient_id = $1
+           AND (e.status = 'SIGNED' OR ($2::text IS NOT NULL AND e.doctor_id = $2::uuid))
+         ORDER BY s.local_date DESC, s.start_at DESC, e.created_at DESC`,
         [patientId, ctx.doctorId ?? null],
       );
       const history = await client.query(
@@ -676,18 +735,41 @@ export class ClinicalService {
           `<tr><td>${i + 1}</td><td>${esc(item.medicine_name)}</td><td>${esc(item.strength)}</td><td>${esc(item.dose)}</td><td>${esc(item.frequency)}</td><td>${esc(item.duration)}</td><td>${esc(item.instructions)}</td></tr>`,
       )
       .join('');
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Prescription</title>
-      <style>body{font-family:sans-serif;margin:32px;color:#0f172a} table{width:100%;border-collapse:collapse} td,th{border:1px solid #cbd5e1;padding:6px;text-align:left} .draft{color:#b45309;font-size:28px;letter-spacing:.2em}</style>
+    const clinicName = esc(clinic.profile?.clinic_name ?? ctx.clinicName);
+    const signedAt = esc(rx.signed_at ?? rx.created_at);
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Prescription · ${clinicName}</title>
+      <style>
+        @page { size: A4; margin: 16mm; }
+        body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; color: #0f172a; }
+        .sheet { max-width: 800px; margin: 0 auto; padding: 24px; }
+        .toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
+        .toolbar button { border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+        h1 { font-size: 22px; margin: 0 0 4px; }
+        .meta { color: #475569; font-size: 14px; margin: 4px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #f8fafc; }
+        .draft { color: #b45309; font-size: 28px; letter-spacing: .2em; margin: 0 0 12px; }
+        .footer { margin-top: 24px; font-size: 12px; color: #64748b; }
+        @media print {
+          .toolbar { display: none !important; }
+          .sheet { padding: 0; max-width: none; }
+        }
+      </style>
       </head><body>
-      ${draft ? '<p class="draft">DRAFT</p>' : ''}
-      <h1>${esc(clinic.profile?.clinic_name ?? ctx.clinicName)}</h1>
-      <p>${esc(clinic.profile?.clinic_name ?? ctx.clinicName)}</p>
-      <p>Patient: ${esc(clinic.patient?.full_name)} (${esc(clinic.patient?.patient_number)})</p>
-      <p>Prescriber: ${esc(clinic.doctor?.display_name)} ${clinic.doctor?.credential_review_status === 'VERIFIED' ? `· ${esc(clinic.doctor?.registration_number)}` : ''}</p>
-      <p>Status: ${esc(rx.status)} · ${esc(rx.signed_at ?? rx.created_at)}</p>
-      <table><thead><tr><th>#</th><th>Medicine</th><th>Strength</th><th>Dose</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead><tbody>${items}</tbody></table>
-      <p>${esc(rx.clinical_instructions)}</p>
-      <p>This document is an authenticated clinic record, not a qualified digital signature.</p>
+      <div class="sheet">
+        <div class="toolbar">
+          <button type="button" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+        ${draft ? '<p class="draft">DRAFT</p>' : ''}
+        <h1>${clinicName}</h1>
+        <p class="meta">Patient: ${esc(clinic.patient?.full_name)} (${esc(clinic.patient?.patient_number)})</p>
+        <p class="meta">Prescriber: ${esc(clinic.doctor?.display_name)}${clinic.doctor?.credential_review_status === 'VERIFIED' ? ` · ${esc(clinic.doctor?.registration_number)}` : ''}</p>
+        <p class="meta">Status: ${esc(rx.status)} · ${signedAt}</p>
+        <table><thead><tr><th>#</th><th>Medicine</th><th>Strength</th><th>Dose</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead><tbody>${items}</tbody></table>
+        <p>${esc(rx.clinical_instructions)}</p>
+        <p class="footer">This document is an authenticated clinic record, not a qualified digital signature. Use Print / Save as PDF to download a PDF copy.</p>
+      </div>
       </body></html>`;
   }
 

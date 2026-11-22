@@ -471,6 +471,98 @@ export class PatientsService {
     });
   }
 
+  async listRelatedByContact(ctx: ClinicContext, id: string) {
+    return this.sql.withClient(async (client) => {
+      const row = await this.getRow(client, ctx.quotedSchema, id);
+      if (!row) throw new NotFoundException('Patient not found');
+
+      const ownContacts = await client.query<{
+        normalized_value: string;
+        display_value: string;
+        contact_type: string;
+      }>(
+        `SELECT DISTINCT normalized_value, display_value, contact_type
+         FROM ${ctx.quotedSchema}.patient_contacts
+         WHERE patient_id = $1`,
+        [id],
+      );
+      if (ownContacts.rows.length === 0) {
+        return { items: [], sharedContactCount: 0 };
+      }
+
+      const numbers = [...new Set(ownContacts.rows.map((c) => c.normalized_value))];
+      const related = await client.query<{
+        id: string;
+        patient_number: string;
+        full_name: string;
+        preferred_name: string | null;
+        status: string;
+        date_of_birth: Date | null;
+        approximate_age_years: number | null;
+        shared_normalized_value: string;
+        shared_display_value: string;
+        shared_contact_type: string;
+        their_relationship: string | null;
+        their_contact_person_name: string | null;
+        our_relationship: string | null;
+        our_contact_person_name: string | null;
+      }>(
+        `SELECT DISTINCT ON (p.id, c.normalized_value)
+            p.id,
+            p.patient_number,
+            p.full_name,
+            p.preferred_name,
+            p.status,
+            p.date_of_birth,
+            p.approximate_age_years,
+            c.normalized_value AS shared_normalized_value,
+            c.display_value AS shared_display_value,
+            c.contact_type AS shared_contact_type,
+            c.relationship AS their_relationship,
+            c.contact_person_name AS their_contact_person_name,
+            oc.relationship AS our_relationship,
+            oc.contact_person_name AS our_contact_person_name
+         FROM ${ctx.quotedSchema}.patient_contacts c
+         JOIN ${ctx.quotedSchema}.patients p ON p.id = c.patient_id
+         JOIN ${ctx.quotedSchema}.patient_contacts oc
+           ON oc.patient_id = $1 AND oc.normalized_value = c.normalized_value
+         WHERE c.normalized_value = ANY($2::text[])
+           AND c.patient_id <> $1
+         ORDER BY p.id, c.normalized_value, c.is_primary DESC, c.created_at ASC
+         LIMIT 50`,
+        [id, numbers],
+      );
+
+      const items = related.rows.map((item) => ({
+        id: item.id,
+        patientNumber: item.patient_number,
+        fullName: item.full_name,
+        preferredName: item.preferred_name,
+        status: item.status,
+        dateOfBirth: toDateOnlyIso(item.date_of_birth),
+        approximateAgeYears: item.approximate_age_years,
+        sharedContact: {
+          displayValue: item.shared_display_value,
+          normalizedValue: item.shared_normalized_value,
+          contactType: item.shared_contact_type,
+          masked: maskPhone(item.shared_normalized_value),
+        },
+        relationshipLabel:
+          item.our_relationship ||
+          item.their_relationship ||
+          (item.our_contact_person_name || item.their_contact_person_name
+            ? 'Linked contact'
+            : 'Shared phone number'),
+        contactPersonName: item.our_contact_person_name || item.their_contact_person_name,
+      }));
+
+      return {
+        items,
+        sharedContactCount: numbers.length,
+      };
+    });
+  }
+
   async create(ctx: ClinicContext, dto: CreatePatientDto) {
     const fullName = dto.fullName.trim().replace(/\s+/g, ' ');
     if (fullName.length < 2) throw new BadRequestException('Full name is required');

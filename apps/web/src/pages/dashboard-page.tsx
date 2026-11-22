@@ -77,19 +77,19 @@ export function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
 
-    api<{ clinicName: string }>('/clinic/me')
+    api<{ clinicName: string }>('/clinic/me', { toast: false })
       .then((me) => {
         if (!cancelled && me?.clinicName) setClinicName(me.clinicName);
       })
       .catch(() => {});
 
-    api<{ items: Doctor[] }>('/clinic/doctors')
+    api<{ items: Doctor[] }>('/clinic/doctors', { toast: false })
       .then((res) => {
         if (!cancelled && res?.items) setDoctors(res.items);
       })
       .catch(() => {});
 
-    api<{ items: ConsultationSession[] }>('/clinic/sessions')
+    api<{ items: ConsultationSession[] }>('/clinic/sessions', { toast: false })
       .then((res) => {
         if (!cancelled && res?.items) setSessions(res.items);
       })

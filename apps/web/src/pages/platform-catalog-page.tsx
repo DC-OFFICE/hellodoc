@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { TablePagination } from '@/components/ui/table-pagination';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 type CatalogItem = {
   id: string;
   name: string;
@@ -107,17 +108,20 @@ export function PlatformCatalogPage({
         <CardContent className="space-y-4">
           <form
             className="flex flex-col gap-3 sm:flex-row sm:items-end"
-            onSubmit={form.handleSubmit(async (values) => {
-              setError(null);
-              try {
-                await api(`/platform/${kind}`, { method: 'POST', json: values });
-                form.reset({ name: '' });
-                if (query.offset !== 0) setQuery((current) => ({ ...current, offset: 0 }));
-                else await load();
-              } catch (err) {
-                setError(err instanceof ApiError ? err.message : 'Create failed');
-              }
-            })}
+            onSubmit={form.handleSubmit(
+              async (values) => {
+                setError(null);
+                try {
+                  await api(`/platform/${kind}`, { method: 'POST', json: values });
+                  form.reset({ name: '' });
+                  if (query.offset !== 0) setQuery((current) => ({ ...current, offset: 0 }));
+                  else await load();
+                } catch (err) {
+                  setError(err instanceof ApiError ? err.message : 'Create failed');
+                }
+              },
+              (errors) => notify.formErrors(errors),
+            )}
             noValidate
           >
             <div className="flex-1 space-y-1.5">

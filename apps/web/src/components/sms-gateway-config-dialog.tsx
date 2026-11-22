@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 export type GatewayConfig = {
@@ -87,10 +88,13 @@ export function SmsGatewayConfigDialog({ open, onOpenChange, gateway, onSaveSucc
         json: {},
       });
       setTestResult(result);
+      if (result.ok) notify.success(result.message);
+      else notify.validation(result.message);
     } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Connection test failed';
       setTestResult({
         ok: false,
-        message: err instanceof ApiError ? err.message : 'Connection test failed',
+        message,
       });
     } finally {
       setTesting(false);
