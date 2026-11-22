@@ -31,7 +31,7 @@ export function CatalogCombobox({
   useEffect(() => {
     let cancelled = false;
     const handle = window.setTimeout(() => {
-      api<CatalogItem[]>(`/clinic/catalog/${kind}?q=${encodeURIComponent(q.trim())}`)
+      api<CatalogItem[]>(`/clinic/catalog/${kind}?q=${encodeURIComponent(q.trim())}`, { toast: false })
         .then((data) => {
           if (!cancelled) setItems(data);
         })

@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Calendar,
   ChevronDown,
   FileText,
+  Link2,
+  MapPin,
   MessageSquare,
+  Phone,
   Plus,
   Receipt,
   Shield,
   Stethoscope,
   User,
+  Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +36,7 @@ import {
 } from '@/features/patients/utils/patient-display';
 import { PrintDocumentButton } from '@/components/print-document-button';
 import { api, ApiError, openProtectedDocument } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import { useClinicAuth } from '@/lib/auth';
 import type { Patient } from '@/lib/clinic-types';
 
@@ -116,6 +121,33 @@ type ClinicalHistory = {
   };
 };
 
+type RelatedPatient = {
+  id: string;
+  patientNumber: string;
+  fullName: string;
+  preferredName: string | null;
+  status: string;
+  dateOfBirth: string | null;
+  approximateAgeYears: number | null;
+  sharedContact: {
+    displayValue: string;
+    normalizedValue: string;
+    contactType: string;
+    masked: string;
+  };
+  relationshipLabel: string;
+  contactPersonName: string | null;
+};
+
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="grid gap-1 border-b border-border/60 py-2.5 last:border-b-0 sm:grid-cols-[140px_1fr] sm:gap-4">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="text-sm text-foreground">{value || '—'}</dd>
+    </div>
+  );
+}
+
 function formatSessionDate(value: string) {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
@@ -166,6 +198,7 @@ export function PatientDetailPage() {
   const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [clinical, setClinical] = useState<ClinicalHistory | null>(null);
+  const [related, setRelated] = useState<RelatedPatient[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState('');
@@ -175,24 +208,34 @@ export function PatientDetailPage() {
     if (!id) return;
     setError(null);
     try {
-      const [p, a, messages, appts] = await Promise.all([
+      const [p, a, messages, appts, relatedPatients] = await Promise.all([
         api<Patient>(`/clinic/patients/${id}`),
-        api<{ items: AuditItem[] }>(`/clinic/patients/${id}/audit`).catch(() => ({ items: [] })),
-        api<{ items: SmsRow[] }>(`/clinic/patients/${id}/notifications`).catch(() => ({ items: [] })),
-        api<{ items: AppointmentRow[] }>(`/clinic/appointments?patientId=${id}&limit=50`).catch(() => ({ items: [] })),
+        api<{ items: AuditItem[] }>(`/clinic/patients/${id}/audit`, { toast: false }).catch(() => ({ items: [] })),
+        api<{ items: SmsRow[] }>(`/clinic/patients/${id}/notifications`, { toast: false }).catch(() => ({
+          items: [],
+        })),
+        api<{ items: AppointmentRow[] }>(`/clinic/appointments?patientId=${id}&limit=50`, { toast: false }).catch(
+          () => ({ items: [] }),
+        ),
+        api<{ items: RelatedPatient[] }>(`/clinic/patients/${id}/related`, { toast: false }).catch(() => ({
+          items: [],
+        })),
       ]);
       setPatient(p);
       setAudit(a.items);
       setSms(messages.items);
       setAppointments(appts.items);
+      setRelated(relatedPatients.items);
 
       if (p.patientNumber) {
-        void api<{ items: InvoiceRow[] }>(`/clinic/invoices?q=${encodeURIComponent(p.patientNumber)}&limit=50`)
+        void api<{ items: InvoiceRow[] }>(`/clinic/invoices?q=${encodeURIComponent(p.patientNumber)}&limit=50`, {
+          toast: false,
+        })
           .then((inv) => setInvoices(inv.items))
           .catch(() => setInvoices([]));
       }
 
-      void api<ClinicalHistory>(`/clinic/patients/${id}/clinical-history`)
+      void api<ClinicalHistory>(`/clinic/patients/${id}/clinical-history`, { toast: false })
         .then((ch) => setClinical(ch))
         .catch(() => setClinical(null));
     } catch (err) {
@@ -393,36 +436,88 @@ export function PatientDetailPage() {
 
         {/* TAB 1: OVERVIEW */}
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Personal details</CardTitle>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <User className="size-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Personal details</CardTitle>
+                    <CardDescription>Identity and demographics on file for this patient.</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p><span className="text-muted-foreground">Full name:</span> {patient.fullName}</p>
-                <p><span className="text-muted-foreground">Preferred name:</span> {patient.preferredName ?? '—'}</p>
-                <p><span className="text-muted-foreground">Age / DOB:</span> {displayPatientAge(patient)}</p>
-                <p><span className="text-muted-foreground">Sex:</span> {patient.sex ?? '—'}</p>
-                <p><span className="text-muted-foreground">Address:</span> {patient.address ?? '—'}</p>
+              <CardContent>
+                <dl>
+                  <DetailRow label="Full name" value={patient.fullName} />
+                  <DetailRow label="Preferred name" value={patient.preferredName ?? '—'} />
+                  <DetailRow label="Age / DOB" value={displayPatientAge(patient)} />
+                  <DetailRow label="Sex" value={patient.sex ?? '—'} />
+                  <DetailRow
+                    label="Address"
+                    value={
+                      patient.address ? (
+                        <span className="inline-flex items-start gap-1.5">
+                          <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                          {patient.address}
+                        </span>
+                      ) : (
+                        '—'
+                      )
+                    }
+                  />
+                </dl>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Contact information</CardTitle>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Phone className="size-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Contact information</CardTitle>
+                    <CardDescription>Phones and guardians used for booking and SMS.</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
+              <CardContent className="space-y-3">
                 {patient.contacts.length === 0 ? (
-                  <p><span className="text-muted-foreground">Exception reason:</span> {patient.contactExceptionReason ?? '—'}</p>
+                  <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+                    No phone on file.
+                    {patient.contactExceptionReason
+                      ? ` Exception: ${patient.contactExceptionReason}`
+                      : ''}
+                  </div>
                 ) : (
                   patient.contacts.map((c) => (
-                    <p key={c.id}>
-                      <span className="text-muted-foreground">{c.contactType}:</span> {c.displayValue}
-                      {c.contactPersonName ? ` (${c.contactPersonName}` : ''}
-                      {c.relationship ? ` · ${c.relationship}` : ''}
-                      {c.contactPersonName ? ')' : ''}
-                      {c.isPrimary ? ' · primary' : ''}
-                    </p>
+                    <div
+                      key={c.id}
+                      className="rounded-xl border border-border bg-muted/20 px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge tone={c.isPrimary ? 'active' : 'default'}>{c.contactType}</Badge>
+                          {c.isPrimary ? (
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-primary">
+                              Primary
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="font-mono text-sm font-semibold text-foreground">
+                          {c.displayValue}
+                        </span>
+                      </div>
+                      {c.contactPersonName || c.relationship ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {c.contactPersonName ?? 'Contact person'}
+                          {c.relationship ? ` · ${c.relationship}` : ''}
+                        </p>
+                      ) : null}
+                    </div>
                   ))
                 )}
               </CardContent>
@@ -430,17 +525,97 @@ export function PatientDetailPage() {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Administrative details</CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Users className="size-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Related patients</CardTitle>
+                    <CardDescription>
+                      Other patient records linked by the same phone number or guardian contact.
+                    </CardDescription>
+                  </div>
+                </div>
+                <Badge tone={related.length > 0 ? 'pending' : 'default'}>
+                  {related.length} linked
+                </Badge>
+              </div>
             </CardHeader>
-            <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-              <p><span className="text-muted-foreground">Registered on:</span> {formatRegisteredDate(patient.createdAt)}</p>
-              <p><span className="text-muted-foreground">Last updated:</span> {formatRegisteredDate(patient.updatedAt)}</p>
-              {patient.deactivationReason ? (
-                <p className="sm:col-span-2 text-destructive">
-                  <span className="font-medium">Deactivation reason:</span> {patient.deactivationReason}
-                </p>
-              ) : null}
+            <CardContent>
+              {related.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
+                  <Link2 className="mx-auto size-5 text-muted-foreground" />
+                  <p className="mt-2 text-sm font-medium text-foreground">No shared-contact relationships</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    When another patient uses the same mobile or guardian number, they will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {related.map((item) => (
+                    <Link
+                      key={`${item.id}-${item.sharedContact.normalizedValue}`}
+                      to={`/patients/${item.id}`}
+                      className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/30"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-foreground">
+                            {item.preferredName || item.fullName}
+                          </p>
+                          <p className="font-mono text-[11px] text-muted-foreground">
+                            {item.patientNumber}
+                          </p>
+                        </div>
+                        <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+                      </div>
+                      <div className="mt-3 space-y-1.5 text-xs">
+                        <p className="font-medium text-primary">{item.relationshipLabel}</p>
+                        <p className="text-muted-foreground">
+                          Shared {item.sharedContact.contactType.toLowerCase()}:{' '}
+                          <span className="font-mono text-foreground">
+                            {item.sharedContact.displayValue}
+                          </span>
+                        </p>
+                        {item.contactPersonName ? (
+                          <p className="text-muted-foreground">Contact person: {item.contactPersonName}</p>
+                        ) : null}
+                        <p className="text-muted-foreground">
+                          Age:{' '}
+                          {displayPatientAge({
+                            dateOfBirth: item.dateOfBirth,
+                            approximateAgeYears: item.approximateAgeYears,
+                            ageRecordedOn: null,
+                          })}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Administrative details</CardTitle>
+              <CardDescription>Registry timestamps and record status.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-x-6 sm:grid-cols-2">
+                <DetailRow label="Registered on" value={formatRegisteredDate(patient.createdAt)} />
+                <DetailRow label="Last updated" value={formatRegisteredDate(patient.updatedAt)} />
+                {patient.deactivationReason ? (
+                  <div className="sm:col-span-2">
+                    <DetailRow
+                      label="Deactivation"
+                      value={<span className="text-destructive">{patient.deactivationReason}</span>}
+                    />
+                  </div>
+                ) : null}
+              </dl>
             </CardContent>
           </Card>
         </TabsContent>
@@ -683,15 +858,16 @@ export function PatientDetailPage() {
                                           void openProtectedDocument(
                                             `/clinic/prescriptions/${encounter.prescription!.id}/print`,
                                             { autoPrint: true },
-                                          ).catch((err) =>
-                                            setError(
+                                          ).catch((err) => {
+                                            const message =
                                               err instanceof ApiError
                                                 ? err.message
                                                 : err instanceof Error
                                                   ? err.message
-                                                  : 'Unable to open prescription',
-                                            ),
-                                          )
+                                                  : 'Unable to open prescription';
+                                            setError(message);
+                                            notify.error(message);
+                                          })
                                         }
                                       >
                                         Print prescription PDF

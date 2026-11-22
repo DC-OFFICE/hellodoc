@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 
 const schema = z
   .object({
@@ -52,15 +53,20 @@ export function RegisterPage() {
     },
   });
 
-  const onSubmit = form.handleSubmit(async (values) => {
-    setServerError(null);
-    try {
-      await api('/clinic-registrations', { method: 'POST', json: values });
-      setDone(true);
-    } catch (error) {
-      setServerError(error instanceof ApiError ? error.message : 'Registration failed');
-    }
-  });
+  const onSubmit = form.handleSubmit(
+    async (values) => {
+      setServerError(null);
+      try {
+        await api('/clinic-registrations', { method: 'POST', json: values });
+        setDone(true);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'Registration failed';
+        setServerError(message);
+        if (!(error instanceof ApiError)) notify.error(message);
+      }
+    },
+    (errors) => notify.formErrors(errors),
+  );
 
   return (
     <div className="min-h-screen">

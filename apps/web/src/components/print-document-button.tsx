@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ApiError, fetchProtectedDocumentHtml } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import { cn } from '@/lib/utils';
 
 type PrintDocumentDialogProps = {
@@ -44,13 +45,14 @@ export function PrintDocumentDialog({
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(
+          const message =
             err instanceof ApiError
               ? err.message
               : err instanceof Error
                 ? err.message
-                : 'Unable to load document',
-          );
+                : 'Unable to load document';
+          setError(message);
+          notify.error(message);
         }
       })
       .finally(() => {

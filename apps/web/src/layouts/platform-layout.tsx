@@ -25,6 +25,7 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import { usePlatformAuth, type PlatformUser } from '@/lib/auth';
 
 const loginSchema = z.object({
@@ -54,13 +55,29 @@ export function PlatformLayout() {
     defaultValues: { email: '', password: '' },
   });
 
+  const onLogin = form.handleSubmit(
+    async (values) => {
+      setLoginError(null);
+      try {
+        const result = await api<{ user: PlatformUser }>('/platform-auth/login', {
+          method: 'POST',
+          json: values,
+        });
+        setUser(result.user);
+      } catch (error) {
+        setLoginError(error instanceof ApiError ? error.message : 'Login failed');
+      }
+    },
+    (errors) => notify.formErrors(errors),
+  );
+
   useEffect(() => {
     if (!user || !clinicId) {
       setClinicName(null);
       return;
     }
     let cancelled = false;
-    api<{ clinicName: string }>(`/platform/clinics/${clinicId}`)
+    api<{ clinicName: string }>(`/platform/clinics/${clinicId}`, { toast: false })
       .then((clinic) => {
         if (!cancelled) setClinicName(clinic.clinicName);
       })
@@ -91,22 +108,7 @@ export function PlatformLayout() {
               <p className="mt-2 text-sm text-muted-foreground">DartCodes internal access only.</p>
             </CardHeader>
             <CardContent>
-              <form
-                className="space-y-4"
-                onSubmit={form.handleSubmit(async (values) => {
-                  setLoginError(null);
-                  try {
-                    const result = await api<{ user: PlatformUser }>('/platform-auth/login', {
-                      method: 'POST',
-                      json: values,
-                    });
-                    setUser(result.user);
-                  } catch (error) {
-                    setLoginError(error instanceof ApiError ? error.message : 'Login failed');
-                  }
-                })}
-                noValidate
-              >
+              <form className="space-y-4" onSubmit={onLogin} noValidate>
                 <div>
                   <Label htmlFor="email">Email</Label>
                   <Input id="email" type="email" autoComplete="username" {...form.register('email')} />

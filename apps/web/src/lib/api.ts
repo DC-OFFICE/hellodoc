@@ -44,15 +44,23 @@ export class ApiError extends Error {
   }
 }
 
+type ApiOptions = RequestInit & {
+  json?: unknown;
+  /** Show a top-right toast on failure. Defaults to true for write methods. */
+  toast?: boolean;
+};
+
 export async function api<T>(
   path: string,
-  options: RequestInit & { json?: unknown } = {},
+  options: ApiOptions = {},
   attempt = 0,
 ): Promise<T> {
-  const headers = new Headers(options.headers);
-  const method = (options.method ?? 'GET').toUpperCase();
+  const { toast: toastOption, json, ...requestInit } = options;
+  const headers = new Headers(requestInit.headers);
+  const method = (requestInit.method ?? 'GET').toUpperCase();
+  const shouldToast = toastOption ?? true;
 
-  if (options.json !== undefined) {
+  if (json !== undefined) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -62,11 +70,11 @@ export async function api<T>(
   }
 
   const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
+    ...requestInit,
     method,
     credentials: 'include',
     headers,
-    body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
+    body: json !== undefined ? JSON.stringify(json) : requestInit.body,
   });
 
   if (res.status === 204) return undefined as T;
@@ -93,14 +101,18 @@ export async function api<T>(
           ? String((rawMessage as { message: unknown }).message)
           : 'Request failed';
     const code = typeof payload?.code === 'string' ? payload.code : undefined;
-    if (csrfRejected) {
-      throw new ApiError(
-        res.status,
-        'Security check failed (CSRF). Refresh the page and try again.',
-        code ?? 'CSRF_INVALID',
-      );
+    const error = csrfRejected
+      ? new ApiError(
+          res.status,
+          'Security check failed (CSRF). Refresh the page and try again.',
+          code ?? 'CSRF_INVALID',
+        )
+      : new ApiError(res.status, message, code);
+    if (shouldToast) {
+      // Lazy import avoids a hard cycle with notify → ApiError.
+      void import('@/lib/notify').then(({ notify }) => notify.error(error));
     }
-    throw new ApiError(res.status, message, code);
+    throw error;
   }
 
   return payload as T;

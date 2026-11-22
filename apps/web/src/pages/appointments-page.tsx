@@ -113,7 +113,7 @@ export function AppointmentsPage() {
   }, [load]);
 
   useEffect(() => {
-    api<{ items: Doctor[] }>('/clinic/doctors?status=ACTIVE&limit=100')
+    api<{ items: Doctor[] }>('/clinic/doctors?status=ACTIVE&limit=100', { toast: false })
       .then((data) => setDoctors(data.items))
       .catch(() => setDoctors([]));
   }, []);

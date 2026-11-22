@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api, ApiError, openProtectedDocument } from '@/lib/api';
+import { notify } from '@/lib/notify';
 
 type Prescription = {
   id: string;
@@ -370,7 +371,14 @@ export function ConsultationPage() {
                       });
                       setMessage('Prescription opened. Choose Save as PDF in the print dialog.');
                     } catch (err) {
-                      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Print failed');
+                      const message =
+                        err instanceof ApiError
+                          ? err.message
+                          : err instanceof Error
+                            ? err.message
+                            : 'Print failed';
+                      setError(message);
+                      notify.error(message);
                     }
                   }}
                 >

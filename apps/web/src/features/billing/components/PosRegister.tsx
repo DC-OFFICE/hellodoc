@@ -35,6 +35,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PrintDocumentDialog } from '@/components/print-document-button';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 
 type Patient = {
   id: string;
@@ -229,7 +230,7 @@ export function PosRegister({
       setRx(null);
       return;
     }
-    void api<Prescription | null>(`/clinic/appointments/${trimmed}/prescription`)
+    void api<Prescription | null>(`/clinic/appointments/${trimmed}/prescription`, { toast: false })
       .then((data) => setRx(data))
       .catch(() => setRx(null));
   }, [appointmentId]);
@@ -344,15 +345,21 @@ export function PosRegister({
   const handleChargeAndIssue = async () => {
     setError(null);
     if (!patientId) {
-      setError('Please select a patient before charging the bill.');
+      const message = 'Please select a patient before charging the bill.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (cart.length === 0) {
-      setError('Cart is empty. Please add at least one item from the catalog.');
+      const message = 'Cart is empty. Please add at least one item from the catalog.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (isShortCash) {
-      setError('Tendered cash is less than the Grand Total.');
+      const message = 'Tendered cash is less than the Grand Total.';
+      setError(message);
+      notify.validation(message);
       return;
     }
 
@@ -423,11 +430,15 @@ export function PosRegister({
   const handleSaveDraft = async () => {
     setError(null);
     if (!patientId) {
-      setError('Please select a patient before saving draft.');
+      const message = 'Please select a patient before saving draft.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (cart.length === 0) {
-      setError('Cart is empty. Please add items to invoice.');
+      const message = 'Cart is empty. Please add items to invoice.';
+      setError(message);
+      notify.validation(message);
       return;
     }
 

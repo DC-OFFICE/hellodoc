@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import type { Doctor } from '@/lib/clinic-types';
 
 const schema = z.object({
@@ -137,7 +138,9 @@ export function DoctorFormDialog({
       if (isEdit) {
         if (version == null) throw new Error('Missing version');
         if (!values.specializationId || !values.qualificationId) {
-          setServerError('Specialization and qualification are required');
+          const message = 'Specialization and qualification are required';
+          setServerError(message);
+          notify.validation(message);
           return;
         }
         saved = await api<Doctor>(`/clinic/doctors/${doctorId}`, {
@@ -157,7 +160,7 @@ export function DoctorFormDialog({
       }
       setServerError(err instanceof ApiError ? err.message : 'Save failed');
     }
-  });
+  }, (errors) => notify.formErrors(errors));
 
   const formBody = (
     <form id="doctor-form-dialog" className="space-y-4" onSubmit={onSubmit} noValidate>

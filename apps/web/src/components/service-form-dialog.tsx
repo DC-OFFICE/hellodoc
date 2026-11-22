@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 
 export type ServiceRecord = {
   id: string;
@@ -109,17 +110,24 @@ export function ServiceFormDialog({
     const trimmedPrice = price.trim();
 
     if (!isEdit && !/^[A-Z0-9_-]{2,20}$/.test(trimmedCode)) {
-      setError('Service code must be 2-20 characters uppercase alphanumeric, dash or underscore (e.g. DOC_CONSULT).');
+      const message =
+        'Service code must be 2-20 characters uppercase alphanumeric, dash or underscore (e.g. DOC_CONSULT).';
+      setError(message);
+      notify.validation(message);
       return;
     }
 
     if (trimmedName.length < 2) {
-      setError('Service name must be at least 2 characters long.');
+      const message = 'Service name must be at least 2 characters long.';
+      setError(message);
+      notify.validation(message);
       return;
     }
 
     if (!/^\d+(\.\d{1,2})?$/.test(trimmedPrice)) {
-      setError('Price must be a valid non-negative amount with up to 2 decimal places (e.g. 1500.00).');
+      const message = 'Price must be a valid non-negative amount with up to 2 decimal places (e.g. 1500.00).';
+      setError(message);
+      notify.validation(message);
       return;
     }
 

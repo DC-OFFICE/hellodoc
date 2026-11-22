@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 
 export function SessionCancelDialog({
   open,
@@ -73,7 +75,10 @@ export function SessionCancelDialog({
                 onOpenChange(false);
                 setReason('');
               } catch (err) {
-                setError(err instanceof Error ? err.message : 'Cancellation failed');
+                const message = err instanceof Error ? err.message : 'Cancellation failed';
+                setError(message);
+                // ApiError from parent api() already toasted.
+                if (!(err instanceof ApiError)) notify.error(message);
               } finally {
                 setBusy(false);
               }

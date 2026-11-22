@@ -42,7 +42,7 @@ export function ClinicAuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const me = await api<ClinicUser>('/clinic-auth/me');
+      const me = await api<ClinicUser>('/clinic-auth/me', { toast: false });
       setUser(me);
     } catch {
       setUser(null);
@@ -75,7 +75,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const me = await api<PlatformUser>('/platform-auth/me');
+      const me = await api<PlatformUser>('/platform-auth/me', { toast: false });
       setUser(me);
     } catch {
       setUser(null);

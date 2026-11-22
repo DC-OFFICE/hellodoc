@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import type { Patient, PatientDuplicateMatch } from '@/lib/clinic-types';
 import { cn } from '@/lib/utils';
 
@@ -166,7 +167,7 @@ function RelationshipCombobox({
 
   useEffect(() => {
     let active = true;
-    api<Array<{ id: string; name: string }>>('/clinic/catalog/relationships')
+    api<Array<{ id: string; name: string }>>('/clinic/catalog/relationships', { toast: false })
       .then((data) => {
         if (active) setItems(data);
       })
@@ -437,6 +438,7 @@ export function PatientFormDialog({
         hasSharedPhone: boolean;
       }>('/clinic/patients/check-duplicates', {
         method: 'POST',
+        toast: false,
         json: {
           fullName: values.fullName.trim(),
           primaryPhone: primary || undefined,
@@ -519,7 +521,7 @@ export function PatientFormDialog({
     } finally {
       setSubmitting(false);
     }
-  });
+  }, (errors) => notify.formErrors(errors));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -87,6 +87,17 @@ export class PatientsController {
     return this.patients.get(ctx, id);
   }
 
+  @Roles('clinic_manager', 'clinic_receptionist', 'clinic_cashier')
+  @Get(':id/related')
+  @Header('Cache-Control', 'no-store')
+  async related(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const ctx = await this.clinicContext.resolvePatientDirectory(session);
+    return this.patients.listRelatedByContact(ctx, id);
+  }
+
   @Roles('clinic_manager', 'clinic_receptionist')
   @Patch(':id')
   async update(

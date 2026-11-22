@@ -33,6 +33,7 @@ import { addDaysIso, clinicTodayIso } from '@/features/sessions/utils/session-fo
 import { useIsMobile } from '@/hooks/use-mobile';
 import { PatientFormDialog } from '@/components/patient-form-dialog';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import type {
   Appointment,
   ConsultationSession,
@@ -157,6 +158,7 @@ export function AppointmentBookingDialog({
             status: 'ACTIVE',
             limit: '10',
           })}`,
+          { toast: false },
         );
         setPatientResults(data.items);
       } catch {
@@ -185,12 +187,12 @@ export function AppointmentBookingDialog({
     setAvailability(null);
     idempotencyKeyRef.current = crypto.randomUUID();
 
-    api<{ items: Doctor[] }>('/clinic/doctors?status=ACTIVE&limit=100')
+    api<{ items: Doctor[] }>('/clinic/doctors?status=ACTIVE&limit=100', { toast: false })
       .then((data) => setDoctors(data.items))
       .catch(() => setDoctors([]));
 
     if (defaults?.patientId) {
-      api<Patient>(`/clinic/patients/${defaults.patientId}`)
+      api<Patient>(`/clinic/patients/${defaults.patientId}`, { toast: false })
         .then((p) => {
           handleSelectPatient(p);
         })
@@ -211,7 +213,7 @@ export function AppointmentBookingDialog({
       to,
       limit: '50',
     });
-    api<{ items: ConsultationSession[] }>(`/clinic/sessions?${qs}`)
+    api<{ items: ConsultationSession[] }>(`/clinic/sessions?${qs}`, { toast: false })
       .then((data) => {
         const bookable = data.items.filter((s) => new Date(s.endAt).getTime() > Date.now());
         setSessions(bookable);
@@ -225,7 +227,7 @@ export function AppointmentBookingDialog({
       setAvailability(null);
       return;
     }
-    api<SessionAvailability>(`/clinic/sessions/${sessionId}/availability`)
+    api<SessionAvailability>(`/clinic/sessions/${sessionId}/availability`, { toast: false })
       .then(setAvailability)
       .catch(() => setAvailability(null));
   }, [open, sessionId]);
@@ -238,11 +240,15 @@ export function AppointmentBookingDialog({
   const goConfirm = () => {
     setError(null);
     if (!selectedPatient) {
-      setError('Select a patient');
+      const message = 'Select a patient';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (!sessionId || !availability?.bookable) {
-      setError('Select a bookable session with remaining capacity');
+      const message = 'Select a bookable session with remaining capacity';
+      setError(message);
+      notify.validation(message);
       return;
     }
     setStep('confirm');
@@ -270,7 +276,7 @@ export function AppointmentBookingDialog({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Booking failed');
       if (sessionId) {
-        api<SessionAvailability>(`/clinic/sessions/${sessionId}/availability`)
+        api<SessionAvailability>(`/clinic/sessions/${sessionId}/availability`, { toast: false })
           .then(setAvailability)
           .catch(() => undefined);
       }

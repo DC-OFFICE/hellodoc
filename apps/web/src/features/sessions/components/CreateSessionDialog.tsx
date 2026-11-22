@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import type { ConsultationSession, Doctor } from '@/lib/clinic-types';
 import { formatSessionDuration } from '../utils/session-formatters';
 
@@ -120,17 +121,22 @@ export function CreateSessionDialog({
     const startLocal = new Date(`${values.localDate}T${values.startTime}:00+05:30`);
     const endLocal = new Date(`${values.localDate}T${values.endTime}:00+05:30`);
     if (Number.isNaN(startLocal.getTime()) || Number.isNaN(endLocal.getTime())) {
-      setError('Enter a valid consultation date and time.');
+      const message = 'Enter a valid consultation date and time.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (endLocal.getTime() <= startLocal.getTime()) {
-      setError('End time must be after start time.');
+      const message = 'End time must be after start time.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     if (endLocal.getTime() <= Date.now()) {
-      setError(
-        'This session time has already ended in Asia/Colombo. Choose a later end time or date.',
-      );
+      const message =
+        'This session time has already ended in Asia/Colombo. Choose a later end time or date.';
+      setError(message);
+      notify.validation(message);
       return;
     }
     try {
@@ -149,7 +155,7 @@ export function CreateSessionDialog({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to create session');
     }
-  });
+  }, (errors) => notify.formErrors(errors));
 
   const formBody = (
     <form id="create-session-form" className="space-y-5" onSubmit={onSubmit} noValidate>

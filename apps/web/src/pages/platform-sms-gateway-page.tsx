@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { api, ApiError } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import {
   SmsGatewayConfigDialog,
   type GatewayConfig,
@@ -168,8 +169,13 @@ export function PlatformSmsGatewayPage() {
         method: 'POST',
         json: {},
       });
-      if (result.ok) setNotice(result.message);
-      else setError(result.message);
+      if (result.ok) {
+        setNotice(result.message);
+        notify.success(result.message);
+      } else {
+        setError(result.message);
+        notify.validation(result.message);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Connection test failed');
     } finally {
