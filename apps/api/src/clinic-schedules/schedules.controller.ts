@@ -44,6 +44,16 @@ export class SchedulesController {
   }
 
   @Roles('clinic_manager')
+  @Post('schedule-templates/:id/activate')
+  async activate(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const ctx = await this.clinicContext.resolve(session);
+    return this.schedules.activate(ctx, id);
+  }
+
+  @Roles('clinic_manager')
   @Post('schedule-templates/:id/materialize')
   async materialize(
     @CurrentSession() session: AuthenticatedSession,
