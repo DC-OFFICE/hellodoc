@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +13,25 @@ type Prescription = {
   id: string;
   status: string;
   version: number;
+  items?: Array<{ medicine_name: string; dose: string; frequency: string }>;
 };
+
+type MedicineRow = { key: string; medicineName: string; dose: string; frequency: string };
+
+function blankMedicine(): MedicineRow {
+  return { key: crypto.randomUUID(), medicineName: '', dose: '', frequency: '' };
+}
+
+/** Returns a clear message for the first incomplete medicine, or null when all rows are valid. */
+function validateMedicines(rows: MedicineRow[]): string | null {
+  for (const [index, row] of rows.entries()) {
+    const label = rows.length > 1 ? `Medicine ${index + 1}` : 'Medicine';
+    if (row.medicineName.trim().length < 2) return `${label}: enter a medicine name (at least 2 characters)`;
+    if (!row.dose.trim()) return `${label}: enter the dose`;
+    if (!row.frequency.trim()) return `${label}: enter the frequency`;
+  }
+  return null;
+}
 
 type Encounter = {
   id: string;
@@ -52,9 +71,7 @@ export function ConsultationPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [medicine, setMedicine] = useState('');
-  const [dose, setDose] = useState('');
-  const [frequency, setFrequency] = useState('');
+  const [medicines, setMedicines] = useState<MedicineRow[]>(() => [blankMedicine()]);
   const [systolic, setSystolic] = useState('');
   const [diastolic, setDiastolic] = useState('');
   const [pulse, setPulse] = useState('');
@@ -64,7 +81,20 @@ export function ConsultationPage() {
     if (!id) return;
     const data = await api<Encounter>(`/clinic/encounters/${id}`);
     setEncounter(data);
-    if (data.prescription) setPrescription(data.prescription);
+    if (data.prescription) {
+      setPrescription(data.prescription);
+      // Reload a saved draft's medicines so they can still be edited before signing.
+      if (data.prescription.status === 'DRAFT' && data.prescription.items?.length) {
+        setMedicines(
+          data.prescription.items.map((item) => ({
+            key: crypto.randomUUID(),
+            medicineName: item.medicine_name ?? '',
+            dose: item.dose ?? '',
+            frequency: item.frequency ?? '',
+          })),
+        );
+      }
+    }
   };
 
   useEffect(() => {
@@ -174,18 +204,35 @@ export function ConsultationPage() {
     }
   };
 
+  const updateMedicine = (key: string, patch: Partial<Omit<MedicineRow, 'key'>>) => {
+    setMedicines((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  };
+
   const savePrescription = async () => {
+    const validationError = validateMedicines(medicines);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const created = await api<Prescription>(`/clinic/encounters/${encounter.id}/prescriptions`, {
-        method: 'POST',
-      });
-      const drafted = await api<Prescription>(`/clinic/prescriptions/${created.id}/draft`, {
+      // Keep editing the same draft; only start a new prescription when there is no draft yet.
+      const target =
+        prescription && prescription.status === 'DRAFT'
+          ? prescription
+          : await api<Prescription>(`/clinic/encounters/${encounter.id}/prescriptions`, {
+              method: 'POST',
+            });
+      const drafted = await api<Prescription>(`/clinic/prescriptions/${target.id}/draft`, {
         method: 'POST',
         json: {
-          version: created.version ?? 1,
-          items: [{ medicineName: medicine, dose, frequency }],
+          version: target.version ?? 1,
+          items: medicines.map((row) => ({
+            medicineName: row.medicineName.trim(),
+            dose: row.dose.trim(),
+            frequency: row.frequency.trim(),
+          })),
         },
       });
       setPrescription(drafted);
@@ -329,7 +376,7 @@ export function ConsultationPage() {
                   <CardTitle>Prescription</CardTitle>
                   <CardDescription>
                     {encounter.status === 'SIGNED'
-                      ? 'Add the medicine, save a draft, then sign and print.'
+                      ? 'Add one or more medicines, save a draft, then sign and print.'
                       : 'Available after the consultation is signed.'}
                   </CardDescription>
                 </div>
@@ -337,22 +384,67 @@ export function ConsultationPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div>
-                  <Label htmlFor="medicine">Medicine</Label>
-                  <Input id="medicine" className="mt-1.5" placeholder="Medicine name" value={medicine} onChange={(event) => setMedicine(event.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="dose">Dose</Label>
-                  <Input id="dose" className="mt-1.5" placeholder="1 tablet" value={dose} onChange={(event) => setDose(event.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="frequency">Frequency</Label>
-                  <Input id="frequency" className="mt-1.5" placeholder="Twice daily" value={frequency} onChange={(event) => setFrequency(event.target.value)} />
-                </div>
+              <div className="space-y-3">
+                {medicines.map((row, index) => (
+                  <div key={row.key} className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+                    <div>
+                      <Label htmlFor={`medicine-${row.key}`}>
+                        {medicines.length > 1 ? `Medicine ${index + 1}` : 'Medicine'}
+                      </Label>
+                      <Input
+                        id={`medicine-${row.key}`}
+                        className="mt-1.5"
+                        placeholder="Medicine name"
+                        value={row.medicineName}
+                        onChange={(event) => updateMedicine(row.key, { medicineName: event.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`dose-${row.key}`}>Dose</Label>
+                      <Input
+                        id={`dose-${row.key}`}
+                        className="mt-1.5"
+                        placeholder="1 tablet"
+                        value={row.dose}
+                        onChange={(event) => updateMedicine(row.key, { dose: event.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`frequency-${row.key}`}>Frequency</Label>
+                      <Input
+                        id={`frequency-${row.key}`}
+                        className="mt-1.5"
+                        placeholder="Twice daily"
+                        value={row.frequency}
+                        onChange={(event) => updateMedicine(row.key, { frequency: event.target.value })}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label={`Remove medicine ${index + 1}`}
+                      title="Remove medicine"
+                      disabled={busy || medicines.length === 1}
+                      onClick={() => setMedicines((rows) => rows.filter((r) => r.key !== row.key))}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy || encounter.status !== 'SIGNED'}
+                  onClick={() => setMedicines((rows) => [...rows, blankMedicine()])}
+                >
+                  <Plus className="mr-1.5 size-4" />
+                  Add medicine
+                </Button>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" disabled={busy || encounter.status !== 'SIGNED' || medicine.trim() === ''} onClick={() => void savePrescription()}>
+                <Button type="button" disabled={busy || encounter.status !== 'SIGNED' || medicines.every((row) => row.medicineName.trim() === '')} onClick={() => void savePrescription()}>
                   Save prescription draft
                 </Button>
                 <Button type="button" variant="secondary" disabled={busy || !prescription || prescription.status !== 'DRAFT'} onClick={() => void signPrescription()}>
