@@ -1,9 +1,27 @@
-import { Body, Controller, Delete, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { CurrentSession, Public, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { ClinicContextService } from '../clinic-context/clinic-context.service.js';
 import { BillingService } from './billing.service.js';
+import {
+  MANAGER_ONLY_CATEGORIES,
+  REPORT_CATEGORIES,
+  type ReportCategory,
+} from './category-reports.js';
 import {
   AcceptStaffInviteDto,
   BillingSettingsDto,
@@ -216,6 +234,25 @@ export class BillingController {
   @Get('clinic/billing/reports/collections')
   collections(@CurrentSession() session: AuthenticatedSession, @Query() query: ListQueryDto) {
     return this.clinicContext.resolveFinance(session).then((ctx) => this.billing.report(ctx, query));
+  }
+
+  @Roles('clinic_manager', 'clinic_cashier')
+  @Get('clinic/billing/reports/category/:category')
+  @Header('Cache-Control', 'no-store')
+  async categoryReport(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('category') category: string,
+    @Query() query: ListQueryDto,
+  ) {
+    if (!(REPORT_CATEGORIES as readonly string[]).includes(category)) {
+      throw new NotFoundException('Unknown report category');
+    }
+    const typed = category as ReportCategory;
+    // Appointment, doctor and patient reports carry patient visit data: managers only.
+    const ctx = MANAGER_ONLY_CATEGORIES.includes(typed)
+      ? await this.clinicContext.resolve(session)
+      : await this.clinicContext.resolveFinance(session);
+    return this.billing.categoryReport(ctx, typed, query);
   }
 
   @Roles('clinic_manager', 'clinic_cashier')
