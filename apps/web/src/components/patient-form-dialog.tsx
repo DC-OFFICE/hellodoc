@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { api, ApiError } from '@/lib/api';
 import { notify } from '@/lib/notify';
+import { isSriLankanMobile, SRI_LANKA_MOBILE_MESSAGE } from '@/lib/phone';
 import type { Patient, PatientDuplicateMatch } from '@/lib/clinic-types';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,12 @@ export function calculateAgeYears(dobStr: string): number | null {
   return age >= 0 && age <= 130 ? age : null;
 }
 
+const optionalMobile = z
+  .string()
+  .trim()
+  .refine((v) => v === '' || isSriLankanMobile(v), SRI_LANKA_MOBILE_MESSAGE)
+  .optional();
+
 const schema = z
   .object({
     fullName: z.string().trim().min(2, 'Name must be at least 2 characters').max(200),
@@ -45,23 +52,11 @@ const schema = z
     approximateAgeYears: z.string().optional(),
     sex: z.enum(['', 'MALE', 'FEMALE', 'OTHER', 'UNKNOWN']).optional(),
     address: z.string().trim().max(2000).optional().or(z.literal('')),
-    primaryPhone: z
-      .string()
-      .trim()
-      .regex(/^$|^[0-9+\-\s()]{7,20}$/, 'Enter a valid phone number')
-      .optional(),
-    secondaryPhone: z
-      .string()
-      .trim()
-      .regex(/^$|^[0-9+\-\s()]{7,20}$/, 'Enter a valid phone number')
-      .optional(),
+    primaryPhone: optionalMobile,
+    secondaryPhone: optionalMobile,
     guardianName: z.string().trim().max(120).optional().or(z.literal('')),
     relationship: z.string().trim().max(80).optional().or(z.literal('')),
-    guardianPhone: z
-      .string()
-      .trim()
-      .regex(/^$|^[0-9+\-\s()]{7,20}$/, 'Enter a valid phone number')
-      .optional(),
+    guardianPhone: optionalMobile,
     contactExceptionReason: z.string().trim().max(500).optional().or(z.literal('')),
     confirmDuplicate: z.boolean().optional(),
     confirmSharedPhone: z.boolean().optional(),
@@ -480,8 +475,11 @@ export function PatientFormDialog({
     try {
       if (isEdit && patientId) {
         if (version === null) throw new Error('Missing record version for update');
+        // confirmDuplicate / confirmSharedPhone are create-only; the update API rejects them.
+        const { confirmDuplicate: _dup, confirmSharedPhone: _shared, ...editable } =
+          buildPayload(values);
         const payload = {
-          ...buildPayload(values),
+          ...editable,
           version,
         };
         const updated = await api<Patient>(`/clinic/patients/${patientId}`, {
@@ -686,6 +684,11 @@ export function PatientFormDialog({
                   placeholder="Optional secondary"
                   {...form.register('secondaryPhone')}
                 />
+                {form.formState.errors.secondaryPhone ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.secondaryPhone.message}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-1.5">
@@ -712,6 +715,11 @@ export function PatientFormDialog({
                   placeholder="0771234567"
                   {...form.register('guardianPhone')}
                 />
+                {form.formState.errors.guardianPhone ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.guardianPhone.message}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-1.5">
