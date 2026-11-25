@@ -11,13 +11,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api, ApiError } from '@/lib/api';
 import { notify } from '@/lib/notify';
+import { isSriLankanMobile, SRI_LANKA_MOBILE_HINT, SRI_LANKA_MOBILE_MESSAGE } from '@/lib/phone';
 
 const schema = z
   .object({
     clinicName: z.string().trim().min(2).max(120),
     ownerName: z.string().trim().min(2).max(120),
     email: z.string().trim().email().max(254),
-    mobile: z.string().trim().regex(/^[0-9+\-\s()]{7,20}$/, 'Enter a valid mobile number'),
+    mobile: z.string().trim().refine(isSriLankanMobile, SRI_LANKA_MOBILE_MESSAGE),
     address: z.string().trim().min(5).max(300),
     password: z
       .string()
@@ -111,8 +112,20 @@ export function RegisterPage() {
                   </div>
                   <div>
                     <Label htmlFor="mobile">Mobile number</Label>
-                    <Input id="mobile" {...form.register('mobile')} />
-                    <p className="mt-1 text-xs text-red-700">{form.formState.errors.mobile?.message}</p>
+                    <Input
+                      id="mobile"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      placeholder="0771234567"
+                      aria-invalid={Boolean(form.formState.errors.mobile)}
+                      {...form.register('mobile')}
+                    />
+                    {form.formState.errors.mobile ? (
+                      <p className="mt-1 text-xs text-red-700">{form.formState.errors.mobile.message}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">{SRI_LANKA_MOBILE_HINT}</p>
+                    )}
                   </div>
                 </div>
                 <div>
