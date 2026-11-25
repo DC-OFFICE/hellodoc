@@ -29,8 +29,12 @@ import { notify } from '@/lib/notify';
 import type { Doctor } from '@/lib/clinic-types';
 
 const schema = z.object({
-  fullName: z.string().trim().min(2).max(120),
-  displayName: z.string().trim().max(120).optional(),
+  fullName: z
+    .string()
+    .trim()
+    .min(2, 'Full name must be at least 2 characters')
+    .max(120, 'Full name must be 120 characters or fewer'),
+  displayName: z.string().trim().max(120, 'Display name must be 120 characters or fewer').optional(),
   specializationId: z.string().uuid('Select a specialization'),
   qualificationId: z.string().uuid('Select a qualification'),
   contactNumber: z
@@ -38,7 +42,7 @@ const schema = z.object({
     .trim()
     .regex(/^$|^[0-9+\-\s()]{7,20}$/, 'Enter a valid phone number')
     .optional(),
-  email: z.string().trim().email().optional().or(z.literal('')),
+  email: z.string().trim().email('Enter a valid email address').optional().or(z.literal('')),
   confirmDuplicate: z.boolean().optional(),
 });
 
@@ -143,9 +147,11 @@ export function DoctorFormDialog({
           notify.validation(message);
           return;
         }
+        // confirmDuplicate is create-only; the update API rejects it.
+        const { confirmDuplicate: _confirmDuplicate, ...editable } = payload;
         saved = await api<Doctor>(`/clinic/doctors/${doctorId}`, {
           method: 'PATCH',
-          json: { ...payload, version },
+          json: { ...editable, version },
         });
       } else {
         saved = await api<Doctor>('/clinic/doctors', { method: 'POST', json: payload });
@@ -171,10 +177,16 @@ export function DoctorFormDialog({
           <div className="space-y-1.5">
             <Label htmlFor="doctor-fullName">Full name</Label>
             <Input id="doctor-fullName" {...form.register('fullName')} />
+            {form.formState.errors.fullName ? (
+              <p className="text-xs text-destructive">{form.formState.errors.fullName.message}</p>
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="doctor-displayName">Display name</Label>
             <Input id="doctor-displayName" {...form.register('displayName')} />
+            {form.formState.errors.displayName ? (
+              <p className="text-xs text-destructive">{form.formState.errors.displayName.message}</p>
+            ) : null}
           </div>
           {isEdit ? (
             <div className="space-y-1.5">
@@ -208,10 +220,16 @@ export function DoctorFormDialog({
             <div className="space-y-1.5">
               <Label htmlFor="doctor-phone">Phone</Label>
               <Input id="doctor-phone" {...form.register('contactNumber')} />
+              {form.formState.errors.contactNumber ? (
+                <p className="text-xs text-destructive">{form.formState.errors.contactNumber.message}</p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="doctor-email">Email</Label>
               <Input id="doctor-email" type="email" {...form.register('email')} />
+              {form.formState.errors.email ? (
+                <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
+              ) : null}
             </div>
           </div>
           {duplicatePrompt ? (
