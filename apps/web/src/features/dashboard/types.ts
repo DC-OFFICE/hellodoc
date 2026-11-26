@@ -71,7 +71,7 @@ export type DashboardMetricsResponse = {
   recentSessions: DashboardSessionItem[];
 };
 
-export type DashboardPreset = 'today' | 'yesterday' | '7days' | 'month' | 'custom';
+export type DashboardPreset = 'today' | 'week' | 'month' | 'custom';
 
 export type DashboardFilters = {
   preset: DashboardPreset;

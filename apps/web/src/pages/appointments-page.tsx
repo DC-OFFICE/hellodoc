@@ -21,6 +21,7 @@ import { TablePagination } from '@/components/ui/table-pagination';
 import { clinicTodayIso } from '@/features/sessions/utils/session-formatters';
 import { api, ApiError } from '@/lib/api';
 import type { Appointment, Doctor } from '@/lib/clinic-types';
+import { appointmentDisplayStatus } from '@/lib/clinic-types';
 
 function formatTimeRange(startAt: string | null, endAt: string | null) {
   if (!startAt || !endAt) return '—';
@@ -271,7 +272,7 @@ export function AppointmentsPage() {
                                 : 'pending'
                           }
                         >
-                          {item.status}
+                          {appointmentDisplayStatus(item)}
                         </Badge>
                       </TableCell>
                       <TableCell>

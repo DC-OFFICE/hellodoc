@@ -72,8 +72,8 @@ export function SessionsCalendarView({
         </div>
       </div>
 
-      {/* Desktop / tablet week grid */}
-      <div className="hidden gap-2 md:grid md:grid-cols-7">
+      {/* Desktop week grid (wide screens only, so columns are not compressed) */}
+      <div className="hidden gap-2 xl:grid xl:grid-cols-7">
         {days.map((date) => {
           const daySessions = byDate.get(date) ?? [];
           const isToday = date === today;
@@ -115,7 +115,10 @@ export function SessionsCalendarView({
                         session.status === 'CANCELLED' && 'border-destructive/20 bg-destructive/10 opacity-80',
                       )}
                     >
-                      <p className="truncate font-medium text-foreground">
+                      <p
+                        className="truncate font-medium text-foreground"
+                        title={session.doctorDisplayName ?? undefined}
+                      >
                         {session.doctorDisplayName}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
@@ -133,8 +136,8 @@ export function SessionsCalendarView({
         })}
       </div>
 
-      {/* Mobile agenda */}
-      <div className="space-y-3 md:hidden">
+      {/* Mobile / tablet agenda (one column on phones, two on tablets) */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:hidden">
         {days.map((date) => {
           const daySessions = byDate.get(date) ?? [];
           return (
@@ -166,8 +169,8 @@ export function SessionsCalendarView({
                       onClick={() => onSelectSession?.(session.id)}
                       className="flex w-full items-start justify-between gap-2 rounded-md border px-3 py-2 text-left hover:bg-muted/50 cursor-pointer"
                     >
-                      <div>
-                        <p className="text-sm font-medium">{session.doctorDisplayName}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium break-words">{session.doctorDisplayName}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatSessionTime(session.startAt, session.endAt, session.timezone)}
                         </p>

@@ -52,7 +52,7 @@ export function DashboardLiveSessions({ sessions }: DashboardLiveSessionsProps) 
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {sessions.map((session) => {
               const bookedPct = session.capacity > 0 ? Math.round((session.bookedCount / session.capacity) * 100) : 0;
               const isFull = bookedPct >= 100;

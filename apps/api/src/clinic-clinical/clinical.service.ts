@@ -282,13 +282,24 @@ export class ClinicalService {
          LIMIT 1`,
         [id],
       );
+      // Include the medicines so the doctor can keep editing a saved draft.
+      const prescriptionRow = prescription.rows[0] ?? null;
+      const prescriptionItems = prescriptionRow
+        ? await client.query(
+            `SELECT medicine_name, dose, frequency FROM ${ctx.quotedSchema}.prescription_items
+             WHERE prescription_id = $1 ORDER BY sort_order`,
+            [prescriptionRow.id],
+          )
+        : null;
       await this.auditClinical(client, ctx, 'encounter.read', 'encounter', id);
       return {
         ...encounter,
         vitals: vitals.rows,
         addenda: addenda.rows,
         allergies,
-        prescription: prescription.rows[0] ?? null,
+        prescription: prescriptionRow
+          ? { ...prescriptionRow, items: prescriptionItems?.rows ?? [] }
+          : null,
       };
     });
   }

@@ -11,6 +11,9 @@ import { CreateScheduleTemplatesDto, MaterializeScheduleDto } from './dto/schedu
 
 const DEFAULT_TZ = 'Asia/Colombo';
 const DEFAULT_HORIZON_DAYS = 90;
+/** Never generate sessions further ahead than this, even after repeated "Extend upcoming". */
+const MAX_HORIZON_DAYS = 365;
+const TEMPLATE_DEACTIVATED_REASON = 'Weekly schedule template deactivated';
 
 type TemplateRow = {
   id: string;
@@ -50,6 +53,36 @@ function mapTemplate(row: TemplateRow) {
   };
 }
 
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+/** Start/end/capacity/duration must be consistent: every booked patient must fit in the session. */
+function assertSlotConfiguration(start: string, end: string, capacity: number, duration: number) {
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  if (sh! > 23 || sm! > 59 || eh! > 23 || em! > 59) {
+    throw new BadRequestException('Enter a valid start and end time');
+  }
+  const sessionMinutes = toMinutes(end) - toMinutes(start);
+  if (sessionMinutes <= 0) {
+    throw new BadRequestException('End time must be after start time');
+  }
+  if (duration > sessionMinutes) {
+    throw new BadRequestException(
+      `Duration (${duration} min) cannot be longer than the session (${sessionMinutes} min)`,
+    );
+  }
+  if (capacity * duration > sessionMinutes) {
+    const maxCapacity = Math.floor(sessionMinutes / duration);
+    throw new BadRequestException(
+      `${capacity} patients × ${duration} min = ${capacity * duration} min, but the session is only ` +
+        `${sessionMinutes} min. Reduce capacity to ${maxCapacity} or less, shorten the duration, or extend the session time.`,
+    );
+  }
+}
+
 @Injectable()
 export class SchedulesService {
   constructor(
@@ -71,15 +104,13 @@ export class SchedulesService {
   }
 
   async createForDoctor(ctx: ClinicContext, doctorId: string, dto: CreateScheduleTemplatesDto) {
-    for (const slot of dto.slots) {
-      if (slot.localEndTime <= slot.localStartTime) {
-        throw new BadRequestException('Each slot end time must be after start time');
-      }
-    }
-
     const timezone = dto.timezone?.trim() || DEFAULT_TZ;
     const capacity = dto.defaultCapacity ?? 20;
     const duration = dto.expectedDurationMinutes ?? 10;
+
+    for (const slot of dto.slots) {
+      assertSlotConfiguration(slot.localStartTime, slot.localEndTime, capacity, duration);
+    }
 
     return this.sql.withClient(async (client) => {
       await this.requireDoctor(client, ctx, doctorId, true);
@@ -130,22 +161,111 @@ export class SchedulesService {
 
   async deactivate(ctx: ClinicContext, templateId: string) {
     return this.sql.withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const updated = await client.query<TemplateRow>(
+          `UPDATE ${ctx.quotedSchema}.schedule_templates
+           SET is_active = false, updated_by = $2, updated_at = NOW()
+           WHERE id = $1 AND is_active = true
+           RETURNING *`,
+          [templateId, ctx.userId],
+        );
+        if (!updated.rows[0]) throw new NotFoundException('Active schedule template not found');
+
+        // Cancel future, not-yet-started sessions generated from this template that have no
+        // confirmed bookings, so they can no longer be booked. The occurrence key is released
+        // so the dates can be generated again if the template is re-activated.
+        const cancelled = await client.query<{ id: string }>(
+          `UPDATE ${ctx.quotedSchema}.consultation_sessions s SET
+             status = 'CANCELLED',
+             cancellation_reason = $3,
+             cancelled_at = NOW(),
+             cancelled_by = $2,
+             updated_by = $2,
+             updated_at = NOW(),
+             occurrence_key = NULL,
+             version = version + 1
+           WHERE s.schedule_template_id = $1
+             AND s.status = 'SCHEDULED'
+             AND s.start_at > NOW()
+             AND NOT EXISTS (
+               SELECT 1 FROM ${ctx.quotedSchema}.appointments a
+               WHERE a.session_id = s.id AND a.status = 'CONFIRMED'
+             )
+           RETURNING s.id`,
+          [templateId, ctx.userId, TEMPLATE_DEACTIVATED_REASON],
+        );
+
+        // Sessions with confirmed bookings are kept so patients are not dropped silently;
+        // staff can review and cancel them from the Sessions module.
+        const keptWithBookings = await client.query<{ local_date: string }>(
+          `SELECT to_char(s.local_date, 'YYYY-MM-DD') AS local_date
+           FROM ${ctx.quotedSchema}.consultation_sessions s
+           WHERE s.schedule_template_id = $1
+             AND s.status = 'SCHEDULED'
+             AND s.start_at > NOW()
+           ORDER BY s.start_at ASC`,
+          [templateId],
+        );
+
+        await client.query('COMMIT');
+        await this.audit.record({
+          actorId: ctx.userId,
+          action: 'schedule_template.deactivated',
+          targetType: 'schedule_template',
+          targetId: templateId,
+          metadata: {
+            tenantId: ctx.tenantId,
+            cancelledSessions: cancelled.rowCount ?? 0,
+            keptSessionsWithBookings: keptWithBookings.rows.length,
+          },
+        });
+        return {
+          ...mapTemplate(updated.rows[0]),
+          cancelledSessions: cancelled.rowCount ?? 0,
+          keptSessionsWithBookings: keptWithBookings.rows.map((r) => r.local_date),
+        };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
+    });
+  }
+
+  async activate(ctx: ClinicContext, templateId: string) {
+    return this.sql.withClient(async (client) => {
+      const existing = await client.query<TemplateRow>(
+        `SELECT * FROM ${ctx.quotedSchema}.schedule_templates WHERE id = $1`,
+        [templateId],
+      );
+      const template = existing.rows[0];
+      if (!template) throw new NotFoundException('Schedule template not found');
+      if (template.is_active) throw new BadRequestException('Schedule template is already active');
+      await this.requireDoctor(client, ctx, template.doctor_id, true);
+
       const updated = await client.query<TemplateRow>(
         `UPDATE ${ctx.quotedSchema}.schedule_templates
-         SET is_active = false, updated_by = $2, updated_at = NOW()
-         WHERE id = $1 AND is_active = true
+         SET is_active = true, updated_by = $2, updated_at = NOW()
+         WHERE id = $1 AND is_active = false
          RETURNING *`,
         [templateId, ctx.userId],
       );
-      if (!updated.rows[0]) throw new NotFoundException('Active schedule template not found');
+      if (!updated.rows[0]) throw new BadRequestException('Schedule template is already active');
+
+      const materializeResult = await this.materializeTemplates(
+        client,
+        ctx,
+        [templateId],
+        DEFAULT_HORIZON_DAYS,
+      );
       await this.audit.record({
         actorId: ctx.userId,
-        action: 'schedule_template.deactivated',
+        action: 'schedule_template.activated',
         targetType: 'schedule_template',
         targetId: templateId,
-        metadata: { tenantId: ctx.tenantId },
+        metadata: { tenantId: ctx.tenantId, created: materializeResult.created },
       });
-      return mapTemplate(updated.rows[0]);
+      return { template: mapTemplate(updated.rows[0]), materialize: materializeResult };
     });
   }
 
@@ -160,7 +280,9 @@ export class SchedulesService {
       if (!template.rows[0].is_active) {
         throw new BadRequestException('Inactive templates cannot generate sessions');
       }
-      const result = await this.materializeTemplates(client, ctx, [templateId], horizonDays);
+      const result = await this.materializeTemplates(client, ctx, [templateId], horizonDays, {
+        extend: true,
+      });
       await this.audit.record({
         actorId: ctx.userId,
         action: 'schedule_template.materialized',
@@ -179,10 +301,12 @@ export class SchedulesService {
     ctx: ClinicContext,
     templateIds: string[],
     horizonDays: number,
+    options: { extend?: boolean } = {},
   ) {
     let created = 0;
     let skippedExisting = 0;
     let skippedConflicts = 0;
+    let generatedThrough: string | null = null;
     const conflicts: Array<{ date: string; templateId: string; message: string }> = [];
 
     for (const templateId of templateIds) {
@@ -199,20 +323,41 @@ export class SchedulesService {
       );
       if (!doctor.rows[0] || doctor.rows[0].status !== 'ACTIVE') continue;
 
+      // Window end: horizonDays from today, or, when extending, horizonDays past the last
+      // session already generated from this template. Never beyond MAX_HORIZON_DAYS from today.
+      let anchor: string | null = null;
+      if (options.extend) {
+        const last = await client.query(
+          `SELECT to_char(MAX(local_date), 'YYYY-MM-DD') AS last_date
+           FROM ${ctx.quotedSchema}.consultation_sessions
+           WHERE schedule_template_id = $1 AND occurrence_key IS NOT NULL`,
+          [template.id],
+        );
+        anchor = (last.rows[0]?.last_date as string | null) ?? null;
+      }
+      const windowEnd = await client.query(
+        `SELECT to_char(
+           LEAST(
+             GREATEST(CURRENT_DATE, COALESCE($1::date, CURRENT_DATE)) + $2::int,
+             CURRENT_DATE + $3::int,
+             COALESCE($4::date, 'infinity'::date)
+           ),
+           'YYYY-MM-DD'
+         ) AS end_date`,
+        [anchor, horizonDays, MAX_HORIZON_DAYS, template.effective_until],
+      );
+      const endDate = windowEnd.rows[0]?.end_date as string;
+      if (!generatedThrough || endDate > generatedThrough) generatedThrough = endDate;
+
       const dates = await client.query(
         `SELECT to_char(d::date, 'YYYY-MM-DD') AS d
          FROM generate_series(
            GREATEST($1::date, CURRENT_DATE),
-           LEAST(COALESCE($2::date, CURRENT_DATE + ($3::int || ' days')::interval), CURRENT_DATE + ($3::int || ' days')::interval),
+           $2::date,
            '1 day'::interval
          ) AS g(d)
-         WHERE EXTRACT(DOW FROM d) = $4`,
-        [
-          template.effective_from,
-          template.effective_until,
-          horizonDays,
-          template.weekday,
-        ],
+         WHERE EXTRACT(DOW FROM d) = $3`,
+        [template.effective_from, endDate, template.weekday],
       );
 
       for (const row of dates.rows as Array<{ d: string }>) {
@@ -288,6 +433,7 @@ export class SchedulesService {
       skippedConflicts,
       conflicts,
       horizonDays,
+      generatedThrough,
     };
   }
 

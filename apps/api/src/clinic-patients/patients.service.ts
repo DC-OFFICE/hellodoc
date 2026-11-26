@@ -12,6 +12,7 @@ import { PrismaPlatformService } from '../platform/prisma-platform.service.js';
 import { TenantSqlClient } from '../tenant-provisioning/tenant-sql.client.js';
 import { scoreDuplicateCandidate } from './patient-duplicate.js';
 import { formatPatientNumber, maskPhone, normalizePhone } from './patient-phone.js';
+import { isSriLankanMobile, SRI_LANKA_MOBILE_MESSAGE } from '../common/sri-lanka-mobile.js';
 import {
   CheckDuplicatesDto,
   CreatePatientDto,
@@ -162,6 +163,12 @@ function validateDobAge(dto: {
 function normalizeContacts(inputs: PatientContactInputDto[] | undefined) {
   if (!inputs?.length) return [];
   const out = inputs.map((c, index) => {
+    if (
+      (c.contactType === 'MOBILE' || c.contactType === 'GUARDIAN_MOBILE') &&
+      !isSriLankanMobile(c.value)
+    ) {
+      throw new BadRequestException(`${c.value.trim()}: ${SRI_LANKA_MOBILE_MESSAGE}`);
+    }
     const normalized = normalizePhone(c.value);
     if (!normalized) throw new BadRequestException(`Invalid phone number: ${c.value}`);
     return {

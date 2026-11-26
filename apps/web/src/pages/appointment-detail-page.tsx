@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { addDaysIso, clinicTodayIso } from '@/features/sessions/utils/session-formatters';
 import { api, ApiError } from '@/lib/api';
 import type { Appointment, ConsultationSession } from '@/lib/clinic-types';
+import { appointmentDisplayStatus } from '@/lib/clinic-types';
 
 export function AppointmentDetailPage() {
   const { id } = useParams();
@@ -121,33 +122,38 @@ export function AppointmentDetailPage() {
                     : 'pending'
               }
             >
-              {appointment.status}
+              {appointmentDisplayStatus(appointment)}
             </Badge>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {appointment.status === 'CONFIRMED' ? (
             <>
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await api(`/clinic/appointments/${appointment.id}/check-in`, {
-                      method: 'POST',
-                      json: {},
-                    });
-                    setCopyMsg('Patient checked in');
-                  } catch (err) {
-                    setError(err instanceof ApiError ? err.message : 'Check-in failed');
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Check in
-              </Button>
+              {!appointment.checkedInAt ? (
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await api(`/clinic/appointments/${appointment.id}/check-in`, {
+                        method: 'POST',
+                        json: {},
+                      });
+                      // Reload so the status badge reflects the check-in immediately.
+                      const refreshed = await api<Appointment>(`/clinic/appointments/${appointment.id}`);
+                      setAppointment(refreshed);
+                      setCopyMsg('Patient checked in');
+                    } catch (err) {
+                      setError(err instanceof ApiError ? err.message : 'Check-in failed');
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Check in
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"

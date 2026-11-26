@@ -27,20 +27,16 @@ function getTodayIso(): string {
 
 function resolveDatesForPreset(preset: DashboardPreset): { from: string; to: string } {
   const today = getTodayIso();
-  const now = new Date();
 
   switch (preset) {
     case 'today':
       return { from: today, to: today };
-    case 'yesterday': {
-      const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const yStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(y);
-      return { from: yStr, to: yStr };
-    }
-    case '7days': {
-      const past = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-      const pastStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(past);
-      return { from: pastStr, to: today };
+    case 'week': {
+      // Calendar week starting Monday (Asia/Colombo)
+      const todayUtc = new Date(`${today}T00:00:00Z`);
+      const daysSinceMonday = (todayUtc.getUTCDay() + 6) % 7;
+      const monday = new Date(todayUtc.getTime() - daysSinceMonday * 24 * 60 * 60 * 1000);
+      return { from: monday.toISOString().slice(0, 10), to: today };
     }
     case 'month': {
       return { from: `${today.slice(0, 7)}-01`, to: today };
@@ -167,7 +163,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Top Welcome & Actions Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
@@ -179,7 +175,7 @@ export function DashboardPage() {
             </span>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Signed in as {user?.email || 'Practitioner'} · Real-time patient throughput, consultation queues, and revenue.
+            Real-time patient throughput, consultation queues, and revenue.
           </p>
         </div>
 
@@ -243,7 +239,7 @@ export function DashboardPage() {
       {metrics ? (
         <DashboardKpiGrid kpis={metrics.kpis} loading={loading} />
       ) : loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="h-32 animate-pulse bg-muted/30" />
           ))}
@@ -253,8 +249,8 @@ export function DashboardPage() {
       {/* Analytical Charts Grid */}
       {metrics ? (
         <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="flex flex-col lg:col-span-2">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+            <div className="flex flex-col xl:col-span-2">
               <PatientVolumeChart data={metrics.volumeTrends} />
             </div>
             <div className="flex flex-col">
@@ -267,7 +263,7 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <div className="flex flex-col">
               <DoctorWorkloadChart doctors={metrics.doctorWorkload} />
             </div>

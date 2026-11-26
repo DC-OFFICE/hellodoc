@@ -29,8 +29,7 @@ interface DashboardFilterBarProps {
 
 const PRESET_OPTIONS: { id: DashboardPreset; label: string }[] = [
   { id: 'today', label: 'Today' },
-  { id: 'yesterday', label: 'Yesterday' },
-  { id: '7days', label: 'Last 7 Days' },
+  { id: 'week', label: 'This Week' },
   { id: 'month', label: 'This Month' },
   { id: 'custom', label: 'Custom' },
 ];
@@ -83,34 +82,37 @@ export function DashboardFilterBar({
       </div>
 
       {/* Secondary filter controls (Date pickers, Doctor, Session) */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* From Date */}
-        <div>
-          <Label className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Calendar className="size-3.5" />
-            From Date
-          </Label>
-          <Input
-            type="date"
-            className="h-9 text-xs"
-            value={filters.from}
-            onChange={(e) => onChange({ from: e.target.value, preset: 'custom' })}
-          />
-        </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/* From / To dates are only shown for the Custom range */}
+        {filters.preset === 'custom' ? (
+          <>
+            <div>
+              <Label className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Calendar className="size-3.5" />
+                From Date
+              </Label>
+              <Input
+                type="date"
+                className="h-9 text-xs"
+                value={filters.from}
+                onChange={(e) => onChange({ from: e.target.value, preset: 'custom' })}
+              />
+            </div>
 
-        {/* To Date */}
-        <div>
-          <Label className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Calendar className="size-3.5" />
-            To Date
-          </Label>
-          <Input
-            type="date"
-            className="h-9 text-xs"
-            value={filters.to}
-            onChange={(e) => onChange({ to: e.target.value, preset: 'custom' })}
-          />
-        </div>
+            <div>
+              <Label className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Calendar className="size-3.5" />
+                To Date
+              </Label>
+              <Input
+                type="date"
+                className="h-9 text-xs"
+                value={filters.to}
+                onChange={(e) => onChange({ to: e.target.value, preset: 'custom' })}
+              />
+            </div>
+          </>
+        ) : null}
 
         {/* Doctor Filter */}
         <div>

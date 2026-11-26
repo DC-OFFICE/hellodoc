@@ -10,8 +10,8 @@ export class DashboardMetricsQueryDto {
   to?: string;
 
   @IsOptional()
-  @IsIn(['today', 'yesterday', '7days', 'month', 'custom'])
-  preset?: 'today' | 'yesterday' | '7days' | 'month' | 'custom';
+  @IsIn(['today', 'yesterday', '7days', 'week', 'month', 'custom'])
+  preset?: 'today' | 'yesterday' | '7days' | 'week' | 'month' | 'custom';
 
   @IsOptional()
   @IsString()
