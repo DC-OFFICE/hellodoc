@@ -170,6 +170,26 @@ export class AppointmentsService {
     private readonly smsDispatcher: SmsDispatcherService,
   ) {}
 
+  /** Once a patient has checked in, the appointment follows the consultation workflow instead. */
+  private async assertNotCheckedIn(
+    client: PoolClient,
+    quotedSchema: string,
+    appointmentId: string,
+    action: 'cancelled' | 'rescheduled',
+  ) {
+    const entry = await client.query<{ checked_in_at: Date | null }>(
+      `SELECT checked_in_at FROM ${quotedSchema}.queue_entries WHERE appointment_id = $1`,
+      [appointmentId],
+    );
+    if (entry.rows[0]?.checked_in_at) {
+      httpError(
+        'APPOINTMENT_CHECKED_IN',
+        `This patient has already checked in, so the appointment can no longer be ${action}.`,
+        'conflict',
+      );
+    }
+  }
+
   private selectSql(quotedSchema: string) {
     return APPOINTMENT_SELECT.replaceAll('__SCHEMA__', quotedSchema);
   }
@@ -541,6 +561,7 @@ export class AppointmentsService {
         } catch {
           httpError('INVALID_STATUS_TRANSITION', 'Appointment cannot be cancelled', 'conflict');
         }
+        await this.assertNotCheckedIn(client, ctx.quotedSchema, id, 'cancelled');
 
         // Lock session so capacity reads stay consistent with concurrent bookings.
         await this.lockSession(client, ctx.quotedSchema, row.session_id);
@@ -603,6 +624,7 @@ export class AppointmentsService {
         } catch {
           httpError('INVALID_STATUS_TRANSITION', 'Appointment cannot be rescheduled', 'conflict');
         }
+        await this.assertNotCheckedIn(client, ctx.quotedSchema, original.id, 'rescheduled');
         if (original.session_id === dto.newSessionId) {
           httpError(
             'INVALID_STATUS_TRANSITION',
