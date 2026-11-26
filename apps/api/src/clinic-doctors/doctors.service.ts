@@ -257,37 +257,124 @@ export class DoctorsService {
     });
   }
 
-  async deactivate(ctx: ClinicContext, id: string) {
+  /** Future scheduled sessions for a doctor, split into unbooked (safe to cancel) and booked. */
+  async futureSessions(ctx: ClinicContext, id: string) {
     return this.sql.withClient(async (client) => {
-      const future = await client.query(
-        `SELECT 1 FROM ${ctx.quotedSchema}.consultation_sessions
-         WHERE doctor_id = $1
-           AND status = 'SCHEDULED'
-           AND start_at > NOW()
-         LIMIT 1`,
-        [id],
-      );
-      if ((future.rowCount ?? 0) > 0) {
-        throw new BadRequestException(
-          'Doctor has future scheduled sessions. Cancel or reassign them before deactivation.',
+      const doctor = await client.query(`SELECT 1 FROM ${ctx.quotedSchema}.doctors WHERE id = $1`, [id]);
+      if (!doctor.rows[0]) throw new NotFoundException('Doctor not found');
+      return this.loadFutureSessions(client, ctx, id);
+    });
+  }
+
+  private async loadFutureSessions(
+    client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> },
+    ctx: ClinicContext,
+    id: string,
+  ) {
+    const rows = await client.query(
+      `SELECT s.id, to_char(s.local_date, 'YYYY-MM-DD') AS local_date, s.start_at, s.end_at,
+              (SELECT COUNT(*)::int FROM ${ctx.quotedSchema}.appointments a
+               WHERE a.session_id = s.id AND a.status = 'CONFIRMED') AS bookings
+       FROM ${ctx.quotedSchema}.consultation_sessions s
+       WHERE s.doctor_id = $1 AND s.status = 'SCHEDULED' AND s.start_at > NOW()
+       ORDER BY s.start_at ASC`,
+      [id],
+    );
+    const sessions = rows.rows as Array<{ id: string; local_date: string; start_at: Date; end_at: Date; bookings: number }>;
+    return {
+      unbookedCount: sessions.filter((s) => s.bookings === 0).length,
+      booked: sessions
+        .filter((s) => s.bookings > 0)
+        .map((s) => ({
+          id: s.id,
+          localDate: s.local_date,
+          startAt: s.start_at.toISOString(),
+          endAt: s.end_at.toISOString(),
+          bookings: s.bookings,
+        })),
+    };
+  }
+
+  async deactivate(ctx: ClinicContext, id: string, options: { cancelFutureSessions?: boolean } = {}) {
+    return this.sql.withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const locked = await client.query(
+          `SELECT id FROM ${ctx.quotedSchema}.doctors WHERE id = $1 AND status = 'ACTIVE' FOR UPDATE`,
+          [id],
         );
+        if (!locked.rows[0]) throw new NotFoundException('Active doctor not found');
+
+        const future = await this.loadFutureSessions(client, ctx, id);
+        if (future.booked.length > 0) {
+          // Booked sessions are never cancelled here: patients would be dropped without notice.
+          throw new ConflictException({
+            code: 'DOCTOR_HAS_BOOKED_SESSIONS',
+            message:
+              `Doctor has ${future.booked.length} future session(s) with booked patients ` +
+              `(${future.booked.map((s) => s.localDate).join(', ')}). ` +
+              'Reschedule or cancel those appointments and sessions before deactivating.',
+          });
+        }
+        if (future.unbookedCount > 0 && !options.cancelFutureSessions) {
+          throw new ConflictException({
+            code: 'DOCTOR_HAS_FUTURE_SESSIONS',
+            message: `Doctor has ${future.unbookedCount} future scheduled session(s). Cancel them to deactivate the doctor.`,
+          });
+        }
+
+        let cancelledSessions = 0;
+        let deactivatedTemplates = 0;
+        if (options.cancelFutureSessions) {
+          const cancelled = await client.query(
+            `UPDATE ${ctx.quotedSchema}.consultation_sessions s SET
+               status = 'CANCELLED',
+               cancellation_reason = 'Doctor deactivated',
+               cancelled_at = NOW(),
+               cancelled_by = $2,
+               updated_by = $2,
+               updated_at = NOW(),
+               occurrence_key = NULL,
+               version = version + 1
+             WHERE s.doctor_id = $1 AND s.status = 'SCHEDULED' AND s.start_at > NOW()
+               AND NOT EXISTS (
+                 SELECT 1 FROM ${ctx.quotedSchema}.appointments a
+                 WHERE a.session_id = s.id AND a.status = 'CONFIRMED'
+               )`,
+            [id, ctx.userId],
+          );
+          cancelledSessions = cancelled.rowCount ?? 0;
+          // Stop weekly templates so no new sessions are generated for an inactive doctor.
+          const templates = await client.query(
+            `UPDATE ${ctx.quotedSchema}.schedule_templates
+             SET is_active = false, updated_by = $2, updated_at = NOW()
+             WHERE doctor_id = $1 AND is_active = true`,
+            [id, ctx.userId],
+          );
+          deactivatedTemplates = templates.rowCount ?? 0;
+        }
+
+        const updated = await client.query<DoctorRow>(
+          `UPDATE ${ctx.quotedSchema}.doctors
+           SET status = 'INACTIVE', updated_by = $2, updated_at = NOW(), version = version + 1
+           WHERE id = $1 AND status = 'ACTIVE'
+           RETURNING *`,
+          [id, ctx.userId],
+        );
+        if (!updated.rows[0]) throw new NotFoundException('Active doctor not found');
+        await client.query('COMMIT');
+        await this.audit.record({
+          actorId: ctx.userId,
+          action: 'doctor.deactivated',
+          targetType: 'doctor',
+          targetId: id,
+          metadata: { tenantId: ctx.tenantId, cancelledSessions, deactivatedTemplates },
+        });
+        return { ...mapDoctor(updated.rows[0]), cancelledSessions, deactivatedTemplates };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
       }
-      const updated = await client.query<DoctorRow>(
-        `UPDATE ${ctx.quotedSchema}.doctors
-         SET status = 'INACTIVE', updated_by = $2, updated_at = NOW(), version = version + 1
-         WHERE id = $1 AND status = 'ACTIVE'
-         RETURNING *`,
-        [id, ctx.userId],
-      );
-      if (!updated.rows[0]) throw new NotFoundException('Active doctor not found');
-      await this.audit.record({
-        actorId: ctx.userId,
-        action: 'doctor.deactivated',
-        targetType: 'doctor',
-        targetId: id,
-        metadata: { tenantId: ctx.tenantId },
-      });
-      return mapDoctor(updated.rows[0]);
     });
   }
 
