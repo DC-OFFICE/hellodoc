@@ -26,6 +26,42 @@ import { api, ApiError } from '@/lib/api';
 import type { ConsultationSession, Doctor, ScheduleTemplate } from '@/lib/clinic-types';
 import { WEEKDAYS } from '@/lib/clinic-types';
 
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+/** Mirrors the API rule: every booked patient must fit within the session time. */
+function validateSchedule(
+  startTime: string,
+  endTime: string,
+  capacity: number,
+  duration: number,
+): string | null {
+  if (!startTime || !endTime) return 'Enter both a start time and an end time';
+  const sessionMinutes = timeToMinutes(endTime) - timeToMinutes(startTime);
+  if (sessionMinutes <= 0) return 'End time must be after start time';
+  if (!Number.isInteger(capacity) || capacity < 1) {
+    return 'Capacity must be a whole number of at least 1';
+  }
+  if (capacity > 500) return 'Capacity cannot be more than 500';
+  if (!Number.isInteger(duration) || duration < 1) {
+    return 'Duration must be a whole number of at least 1 minute';
+  }
+  if (duration > 240) return 'Duration cannot be more than 240 minutes';
+  if (duration > sessionMinutes) {
+    return `Duration (${duration} min) cannot be longer than the session (${sessionMinutes} min)`;
+  }
+  if (capacity * duration > sessionMinutes) {
+    const maxCapacity = Math.floor(sessionMinutes / duration);
+    return (
+      `${capacity} patients × ${duration} min = ${capacity * duration} min, but the session is only ` +
+      `${sessionMinutes} min. Reduce capacity to ${maxCapacity} or less, shorten the duration, or extend the session time.`
+    );
+  }
+  return null;
+}
+
 export function DoctorDetailPage() {
   const { id } = useParams();
   const [doctor, setDoctor] = useState<Doctor | null>(null);
@@ -33,6 +69,7 @@ export function DoctorDetailPage() {
   const [upcoming, setUpcoming] = useState<ConsultationSession[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [scheduleMsg, setScheduleMsg] = useState<string | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 3, 5]);
   const [startTime, setStartTime] = useState('17:00');
   const [endTime, setEndTime] = useState('21:00');
@@ -437,20 +474,38 @@ export function DoctorDetailPage() {
             </div>
             <div>
               <Label>Capacity</Label>
-              <Input type="number" value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
+              <Input
+                type="number"
+                min={1}
+                max={500}
+                step={1}
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value === '' ? Number.NaN : Number(e.target.value))}
+              />
             </div>
             <div>
               <Label>Duration (min)</Label>
-              <Input type="number" value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
+              <Input
+                type="number"
+                min={1}
+                max={240}
+                step={1}
+                value={duration}
+                onChange={(e) => setDuration(e.target.value === '' ? Number.NaN : Number(e.target.value))}
+              />
             </div>
           </div>
+          {scheduleError ? <p className="text-sm text-destructive">{scheduleError}</p> : null}
           {scheduleMsg ? <p className="text-sm text-primary">{scheduleMsg}</p> : null}
           <Button
             type="button"
             disabled={saving || selectedDays.length === 0 || doctor.status !== 'ACTIVE'}
             onClick={async () => {
-              setSaving(true);
               setScheduleMsg(null);
+              const validationError = validateSchedule(startTime, endTime, capacity, duration);
+              setScheduleError(validationError);
+              if (validationError) return;
+              setSaving(true);
               try {
                 const today = new Date().toISOString().slice(0, 10);
                 const result = await api<{
@@ -477,7 +532,7 @@ export function DoctorDetailPage() {
                 );
                 await load();
               } catch (err) {
-                setScheduleMsg(err instanceof ApiError ? err.message : 'Failed to save schedule');
+                setScheduleError(err instanceof ApiError ? err.message : 'Failed to save schedule');
               } finally {
                 setSaving(false);
               }
@@ -520,12 +575,31 @@ export function DoctorDetailPage() {
                               variant="outline"
                               type="button"
                               onClick={async () => {
-                                const result = await api<{ created: number }>(
-                                  `/clinic/schedule-templates/${t.id}/materialize`,
-                                  { method: 'POST', json: { horizonDays: 90 } },
-                                );
-                                setScheduleMsg(`Extended sessions: created ${result.created}`);
-                                await load();
+                                setScheduleError(null);
+                                try {
+                                  const result = await api<{
+                                    created: number;
+                                    skippedConflicts: number;
+                                    generatedThrough: string | null;
+                                  }>(`/clinic/schedule-templates/${t.id}/materialize`, {
+                                    method: 'POST',
+                                    json: { horizonDays: 90 },
+                                  });
+                                  const through = result.generatedThrough
+                                    ? ` Sessions now run until ${result.generatedThrough}.`
+                                    : '';
+                                  const conflicts = result.skippedConflicts
+                                    ? ` ${result.skippedConflicts} date(s) skipped because they overlap existing sessions.`
+                                    : '';
+                                  setScheduleMsg(
+                                    result.created > 0
+                                      ? `Extended sessions: created ${result.created} new session(s).${through}${conflicts}`
+                                      : `No new sessions created. Sessions are already generated as far ahead as allowed (up to 365 days).${through}${conflicts}`,
+                                  );
+                                  await load();
+                                } catch (err) {
+                                  setScheduleError(err instanceof ApiError ? err.message : 'Failed to extend sessions');
+                                }
                               }}
                             >
                               Extend upcoming
@@ -535,18 +609,60 @@ export function DoctorDetailPage() {
                               variant="destructive"
                               type="button"
                               onClick={async () => {
-                                await api(`/clinic/schedule-templates/${t.id}/deactivate`, {
-                                  method: 'POST',
-                                  json: {},
-                                });
-                                await load();
+                                setScheduleError(null);
+                                try {
+                                  const result = await api<{
+                                    cancelledSessions: number;
+                                    keptSessionsWithBookings: string[];
+                                  }>(`/clinic/schedule-templates/${t.id}/deactivate`, {
+                                    method: 'POST',
+                                    json: {},
+                                  });
+                                  const kept = result.keptSessionsWithBookings ?? [];
+                                  setScheduleMsg(
+                                    `Template deactivated. Cancelled ${result.cancelledSessions ?? 0} upcoming session(s).` +
+                                      (kept.length
+                                        ? ` ${kept.length} session(s) with existing bookings were kept (${kept.join(', ')}). Review them in Sessions.`
+                                        : ''),
+                                  );
+                                  await load();
+                                } catch (err) {
+                                  setScheduleError(err instanceof ApiError ? err.message : 'Failed to deactivate template');
+                                }
                               }}
                             >
                               Deactivate
                             </Button>
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-500">—</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            type="button"
+                            disabled={doctor.status !== 'ACTIVE'}
+                            onClick={async () => {
+                              setScheduleError(null);
+                              try {
+                                const result = await api<{
+                                  materialize: { created: number; skippedConflicts: number };
+                                }>(`/clinic/schedule-templates/${t.id}/activate`, {
+                                  method: 'POST',
+                                  json: {},
+                                });
+                                setScheduleMsg(
+                                  `Template activated. Generated ${result.materialize?.created ?? 0} session(s)` +
+                                    (result.materialize?.skippedConflicts
+                                      ? ` (${result.materialize.skippedConflicts} skipped because they overlap existing sessions).`
+                                      : '.'),
+                                );
+                                await load();
+                              } catch (err) {
+                                setScheduleError(err instanceof ApiError ? err.message : 'Failed to activate template');
+                              }
+                            }}
+                          >
+                            Activate
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>

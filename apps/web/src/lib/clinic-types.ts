@@ -101,6 +101,9 @@ export type Appointment = {
   endAt: string | null;
   timezone: string | null;
   sessionStatus: string | null;
+  /** Live queue state (RESERVED until check-in, then WAITING, CALLED, ...). */
+  queueState?: string | null;
+  checkedInAt?: string | null;
   queueNumber: number;
   queueDisplay: string;
   bookingSource: 'PHONE' | 'WALK_IN' | string;
@@ -114,6 +117,12 @@ export type Appointment = {
   createdAt: string;
   updatedAt: string;
 };
+
+/** Status shown to staff: a confirmed appointment reads "CHECKED IN" once the patient has checked in. */
+export function appointmentDisplayStatus(a: Pick<Appointment, 'status' | 'checkedInAt'>): string {
+  if (a.status === 'CONFIRMED' && a.checkedInAt) return 'CHECKED IN';
+  return a.status;
+}
 
 export type SessionAvailability = {
   sessionId: string;

@@ -69,6 +69,8 @@ type AppointmentRow = {
   end_at?: Date;
   timezone?: string;
   session_status?: string;
+  queue_state?: string | null;
+  queue_checked_in_at?: Date | null;
 };
 
 function toDateOnlyIso(value: Date | string | null | undefined): string | null {
@@ -118,6 +120,8 @@ function mapAppointment(row: AppointmentRow) {
     endAt: row.end_at?.toISOString() ?? null,
     timezone: row.timezone ?? null,
     sessionStatus: row.session_status ?? null,
+    queueState: row.queue_state ?? null,
+    checkedInAt: row.queue_checked_in_at?.toISOString() ?? null,
     queueNumber: row.queue_number,
     queueDisplay: formatQueueDisplay(row.queue_number),
     bookingSource: row.booking_source,
@@ -146,11 +150,14 @@ const APPOINTMENT_SELECT = `
          s.start_at,
          s.end_at,
          s.timezone,
-         s.status AS session_status
+         s.status AS session_status,
+         q.state AS queue_state,
+         q.checked_in_at AS queue_checked_in_at
   FROM __SCHEMA__.appointments a
   JOIN __SCHEMA__.patients p ON p.id = a.patient_id
   JOIN __SCHEMA__.consultation_sessions s ON s.id = a.session_id
   JOIN __SCHEMA__.doctors d ON d.id = s.doctor_id
+  LEFT JOIN __SCHEMA__.queue_entries q ON q.appointment_id = a.id
 `;
 
 @Injectable()

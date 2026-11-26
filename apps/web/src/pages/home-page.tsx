@@ -12,9 +12,6 @@ export function HomePage() {
             <Link to="/login">
               <Button variant="outline" type="button">Clinic login</Button>
             </Link>
-            <Link to="/register">
-              <Button type="button">Register clinic</Button>
-            </Link>
           </div>
         }
       />

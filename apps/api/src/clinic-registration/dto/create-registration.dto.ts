@@ -2,10 +2,10 @@ import {
   Equals,
   IsEmail,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { IsSriLankanMobile } from '../../common/sri-lanka-mobile.js';
 
 export class CreateRegistrationDto {
   @IsString()
@@ -23,7 +23,7 @@ export class CreateRegistrationDto {
   email!: string;
 
   @IsString()
-  @Matches(/^[0-9+\-\s()]{7,20}$/)
+  @IsSriLankanMobile()
   mobile!: string;
 
   @IsString()

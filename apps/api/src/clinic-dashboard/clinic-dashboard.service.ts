@@ -102,6 +102,12 @@ export class ClinicDashboardService {
       const past = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
       from = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(past);
       to = todayStr;
+    } else if (preset === 'week') {
+      // Calendar week starting Monday (Asia/Colombo)
+      const today = new Date(`${todayStr}T00:00:00Z`);
+      const daysSinceMonday = (today.getUTCDay() + 6) % 7;
+      from = new Date(today.getTime() - daysSinceMonday * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      to = todayStr;
     } else if (preset === 'month') {
       from = `${todayStr.slice(0, 7)}-01`;
       to = todayStr;

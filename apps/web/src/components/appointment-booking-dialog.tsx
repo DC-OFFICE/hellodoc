@@ -17,7 +17,9 @@ import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -88,6 +90,7 @@ export function AppointmentBookingDialog({
   const [doctorId, setDoctorId] = useState('');
   const [sessionDate, setSessionDate] = useState(clinicTodayIso());
   const [sessions, setSessions] = useState<ConsultationSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [availability, setAvailability] = useState<SessionAvailability | null>(null);
   const [bookingSource, setBookingSource] = useState<'PHONE' | 'WALK_IN'>('PHONE');
@@ -203,8 +206,11 @@ export function AppointmentBookingDialog({
   useEffect(() => {
     if (!open || !doctorId) {
       setSessions([]);
+      setSessionsLoading(false);
       return;
     }
+    let active = true;
+    setSessionsLoading(true);
     const to = addDaysIso(sessionDate, 14);
     const qs = new URLSearchParams({
       doctorId,
@@ -215,12 +221,40 @@ export function AppointmentBookingDialog({
     });
     api<{ items: ConsultationSession[] }>(`/clinic/sessions?${qs}`, { toast: false })
       .then((data) => {
+        if (!active) return;
         const bookable = data.items.filter((s) => new Date(s.endAt).getTime() > Date.now());
         setSessions(bookable);
-        if (sessionId && !bookable.some((s) => s.id === sessionId)) setSessionId('');
+        const current = sessionId ? bookable.find((s) => s.id === sessionId) : undefined;
+        if (sessionId && !current) setSessionId('');
+        // A preselected session on a later date moves "From date" to match it.
+        if (current && current.localDate !== sessionDate) setSessionDate(current.localDate);
       })
-      .catch(() => setSessions([]));
+      .catch(() => {
+        if (active) setSessions([]);
+      })
+      .finally(() => {
+        if (active) setSessionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [open, doctorId, sessionDate]);
+
+  const sessionsOnDate = useMemo(
+    () => sessions.filter((s) => s.localDate === sessionDate),
+    [sessions, sessionDate],
+  );
+  const laterSessions = useMemo(
+    () => sessions.filter((s) => s.localDate !== sessionDate),
+    [sessions, sessionDate],
+  );
+
+  const handleSelectSession = (id: string) => {
+    setSessionId(id);
+    // Keep "From date" in sync with the chosen session's date.
+    const chosen = sessions.find((s) => s.id === id);
+    if (chosen && chosen.localDate !== sessionDate) setSessionDate(chosen.localDate);
+  };
 
   useEffect(() => {
     if (!open || !sessionId) {
@@ -506,20 +540,55 @@ export function AppointmentBookingDialog({
               <Label>Available session</Label>
               <Select
                 value={sessionId || undefined}
-                onValueChange={setSessionId}
+                onValueChange={handleSelectSession}
                 disabled={!sessions.length}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select session" />
+                  <SelectValue
+                    placeholder={
+                      !doctorId
+                        ? 'Select a doctor first'
+                        : sessionsLoading
+                          ? 'Loading sessions…'
+                          : sessionsOnDate.length
+                            ? 'Select session'
+                            : laterSessions.length
+                              ? 'Select a session on another date'
+                              : 'No sessions available'
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {sessions.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {formatSessionLabel(s)} · cap {s.capacity}
-                    </SelectItem>
-                  ))}
+                  {sessionsOnDate.length ? (
+                    <SelectGroup>
+                      <SelectLabel>Sessions on {sessionDate}</SelectLabel>
+                      {sessionsOnDate.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {formatSessionLabel(s)} · cap {s.capacity}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ) : null}
+                  {laterSessions.length ? (
+                    <SelectGroup>
+                      <SelectLabel>Next available sessions</SelectLabel>
+                      {laterSessions.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {formatSessionLabel(s)} · cap {s.capacity}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ) : null}
                 </SelectContent>
               </Select>
+              {doctorId && !sessionsLoading && sessionsOnDate.length === 0 ? (
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  No consultation sessions available for the selected date.
+                  {laterSessions.length
+                    ? ' Choose another date, or pick one of the next available sessions.'
+                    : ' There are no sessions for this doctor in the next 14 days.'}
+                </p>
+              ) : null}
             </div>
             {availability ? (
               <p className="text-sm text-muted-foreground">

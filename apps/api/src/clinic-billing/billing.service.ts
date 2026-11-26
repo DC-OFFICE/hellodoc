@@ -23,6 +23,7 @@ import { PasswordService } from '../common/password.service.js';
 import { validatePasswordStrength } from '../common/password-policy.js';
 import { PrismaPlatformService } from '../platform/prisma-platform.service.js';
 import { TenantSqlClient } from '../tenant-provisioning/tenant-sql.client.js';
+import { buildCategoryReport, type ReportCategory } from './category-reports.js';
 import type {
   AcceptStaffInviteDto,
   BillingSettingsDto,
@@ -883,6 +884,26 @@ export class BillingService {
         outstanding: money(outstanding.rows[0].amount as string),
         note: 'Net collections are confirmed receipts minus executed refunds. This is not a profit statement. Invoiced amounts are not cash collected.',
       };
+    });
+  }
+
+  /** Invoice / appointment / doctor / patient reports. Rows are exported to CSV, Excel or PDF by the web app. */
+  async categoryReport(ctx: ClinicContext, category: ReportCategory, query: ListQueryDto) {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date());
+    const from = query.from ?? today;
+    const to = query.to ?? from;
+    if (from > to) {
+      throw new BadRequestException('The From date must be on or before the To date');
+    }
+    return this.sql.withClient(async (client) => {
+      const report = await buildCategoryReport(client, ctx.quotedSchema, category, from, to);
+      await this.auditBilling(client, ctx, 'billing.report_generated', 'report', null, {
+        category,
+        from,
+        to,
+        rows: report.rows.length,
+      });
+      return report;
     });
   }
 
