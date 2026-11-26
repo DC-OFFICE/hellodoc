@@ -4,11 +4,12 @@ import { TenantProvisioningModule } from '../tenant-provisioning/tenant-provisio
 import { QueueController } from './queue.controller.js';
 import { QueueEventsHub } from './queue-events.hub.js';
 import { QueueService } from './queue.service.js';
+import { SessionAutoCloseService } from './session-auto-close.service.js';
 
 @Module({
   imports: [TenantProvisioningModule, forwardRef(() => ClinicNotificationsModule)],
   controllers: [QueueController],
-  providers: [QueueService, QueueEventsHub],
+  providers: [QueueService, QueueEventsHub, SessionAutoCloseService],
   exports: [QueueService],
 })
 export class ClinicQueueModule {}

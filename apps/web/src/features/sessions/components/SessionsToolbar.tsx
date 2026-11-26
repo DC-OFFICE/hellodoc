@@ -105,6 +105,8 @@ function FilterFields({
           <SelectContent>
             <SelectItem value="ALL">All statuses</SelectItem>
             <SelectItem value="SCHEDULED">Scheduled</SelectItem>
+            <SelectItem value="OPEN">Open</SelectItem>
+            <SelectItem value="CLOSED">Closed</SelectItem>
             <SelectItem value="CANCELLED">Cancelled</SelectItem>
           </SelectContent>
         </Select>

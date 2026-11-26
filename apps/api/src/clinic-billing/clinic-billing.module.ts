@@ -7,5 +7,6 @@ import { BillingService } from './billing.service.js';
   imports: [TenantProvisioningModule],
   controllers: [BillingController],
   providers: [BillingService],
+  exports: [BillingService],
 })
 export class ClinicBillingModule {}

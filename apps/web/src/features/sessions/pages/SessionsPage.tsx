@@ -125,7 +125,8 @@ export function SessionsPage() {
     try {
       const today = clinicTodayIso();
       const listParams = new URLSearchParams({
-        status: filters.status,
+        // "Open" includes paused sessions: both are in progress.
+        status: filters.status === 'OPEN' ? 'OPEN,PAUSED' : filters.status,
         limit: '200',
         from: filters.from,
         to: filters.to,

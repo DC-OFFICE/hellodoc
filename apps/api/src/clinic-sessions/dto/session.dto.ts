@@ -113,9 +113,12 @@ export class ListSessionsQueryDto {
   @IsDateString()
   to?: string;
 
+  /** ALL, one status, or a comma-separated list (e.g. OPEN,PAUSED). */
   @IsOptional()
-  @Matches(/^(SCHEDULED|CANCELLED|ALL)$/)
-  status?: 'SCHEDULED' | 'CANCELLED' | 'ALL';
+  @Matches(/^(ALL|(SCHEDULED|OPEN|PAUSED|DELAYED|CLOSED|CANCELLED)(,(SCHEDULED|OPEN|PAUSED|DELAYED|CLOSED|CANCELLED))*)$/, {
+    message: 'Invalid session status filter',
+  })
+  status?: string;
 
   @IsOptional()
   @Type(() => Number)

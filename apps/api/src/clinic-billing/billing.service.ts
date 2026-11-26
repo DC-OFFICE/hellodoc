@@ -479,6 +479,71 @@ export class BillingService {
     });
   }
 
+  /**
+   * Called after a doctor signs a prescription: creates a DRAFT invoice for the appointment with
+   * the consultation fee and one line per prescribed medicine (priced 0.00 for the cashier to set).
+   * Does nothing when the appointment already has an invoice that is not voided.
+   */
+  async createDraftForPrescription(
+    ctx: ClinicContext,
+    input: {
+      appointmentId: string;
+      patientId: string;
+      medicines: Array<{ name: string; dose: string | null; frequency: string | null }>;
+    },
+  ): Promise<{ invoiceId: string; created: boolean } | null> {
+    const existing = await this.sql.withClient((client) =>
+      client.query<{ id: string }>(
+        `SELECT id FROM ${ctx.quotedSchema}.invoices
+         WHERE appointment_id = $1 AND status <> 'VOIDED'
+         ORDER BY created_at DESC LIMIT 1`,
+        [input.appointmentId],
+      ),
+    );
+    if (existing.rows[0]) return { invoiceId: existing.rows[0].id, created: false };
+
+    const services = await this.sql.withClient((client) =>
+      client.query<{ id: string; code: string; is_default: boolean }>(
+        `SELECT s.id, s.code, (s.id = st.default_service_id) AS is_default
+         FROM ${ctx.quotedSchema}.billing_services s
+         LEFT JOIN ${ctx.quotedSchema}.billing_settings st ON st.id = TRUE
+         WHERE s.active = TRUE`,
+      ),
+    );
+    const consultation =
+      services.rows.find((s) => s.is_default) ?? services.rows.find((s) => s.code === 'DOC_CONSULT');
+    const medicineService =
+      services.rows.find((s) => s.code === 'MEDICINES') ?? services.rows.find((s) => s.code === 'OTHER_SERVICES');
+
+    const items: CreateInvoiceDto['items'] = [];
+    if (consultation) items.push({ serviceId: consultation.id, quantity: 1 });
+    if (medicineService) {
+      for (const medicine of input.medicines.slice(0, 19)) {
+        const detail = [medicine.dose, medicine.frequency].filter(Boolean).join(', ');
+        items.push({
+          serviceId: medicineService.id,
+          quantity: 1,
+          unitPrice: '0.00',
+          description: `Medicine: ${medicine.name}${detail ? ` (${detail})` : ''}`.slice(0, 200),
+        });
+      }
+    }
+    if (items.length === 0) return null;
+
+    const invoice = await this.createInvoice(ctx, {
+      patientId: input.patientId,
+      appointmentId: input.appointmentId,
+      items,
+    });
+    await this.sql.withClient((client) =>
+      this.auditBilling(client, ctx, 'billing.invoice_auto_created', 'invoice', invoice.id, {
+        source: 'prescription_signed',
+        appointmentId: input.appointmentId,
+      }),
+    );
+    return { invoiceId: invoice.id, created: true };
+  }
+
   async getInvoice(ctx: ClinicContext, id: string) {
     return this.sql.withClient(async (client) => this.loadInvoice(client, ctx, id));
   }
@@ -1062,7 +1127,7 @@ export class BillingService {
     const row = invoice.rows[0] as Record<string, string> | undefined;
     if (!row) fail('INVOICE_NOT_FOUND', 'Invoice not found', 'missing');
     const items = await client.query(
-      `SELECT description, quantity, unit_price::text, discount::text, tax_amount::text, line_total::text, tax_classification
+      `SELECT service_id, description, quantity, unit_price::text, discount::text, tax_amount::text, line_total::text, tax_classification
        FROM ${ctx.quotedSchema}.invoice_items WHERE invoice_id = $1 ORDER BY position`,
       [id],
     );
@@ -1106,6 +1171,7 @@ export class BillingService {
       issuedAt: row.issued_at,
       voidReason: row.void_reason,
       items: items.rows.map((item) => ({
+        serviceId: item.service_id as string | null,
         description: item.description as string,
         quantity: item.quantity as number,
         unitPrice: item.unit_price as string,
@@ -1192,7 +1258,7 @@ export class BillingService {
           randomUUID(),
           invoiceId,
           svc.id,
-          svc.name,
+          item.description?.trim() || svc.name,
           qty,
           unitPrice,
           amounts.discount,

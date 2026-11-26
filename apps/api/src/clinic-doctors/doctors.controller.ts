@@ -12,7 +12,12 @@ import { CurrentSession, Roles } from '../auth/decorators.js';
 import type { AuthenticatedSession } from '../auth/session.service.js';
 import { ClinicContextService } from '../clinic-context/clinic-context.service.js';
 import { DoctorsService } from './doctors.service.js';
-import { CreateDoctorDto, ListDoctorsQueryDto, UpdateDoctorDto } from './dto/doctor.dto.js';
+import {
+  CreateDoctorDto,
+  DeactivateDoctorDto,
+  ListDoctorsQueryDto,
+  UpdateDoctorDto,
+} from './dto/doctor.dto.js';
 
 @Controller('clinic/doctors')
 export class DoctorsController {
@@ -57,13 +62,24 @@ export class DoctorsController {
   }
 
   @Roles('clinic_manager')
-  @Post(':id/deactivate')
-  async deactivate(
+  @Get(':id/future-sessions')
+  async futureSessions(
     @CurrentSession() session: AuthenticatedSession,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const ctx = await this.clinicContext.resolve(session);
-    return this.doctors.deactivate(ctx, id);
+    return this.doctors.futureSessions(ctx, id);
+  }
+
+  @Roles('clinic_manager')
+  @Post(':id/deactivate')
+  async deactivate(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeactivateDoctorDto,
+  ) {
+    const ctx = await this.clinicContext.resolve(session);
+    return this.doctors.deactivate(ctx, id, { cancelFutureSessions: dto.cancelFutureSessions === true });
   }
 
   @Roles('clinic_manager')

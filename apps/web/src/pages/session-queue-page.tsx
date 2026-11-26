@@ -48,6 +48,7 @@ export function SessionQueuePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [skipReason, setSkipReason] = useState('');
+  const [confirmComplete, setConfirmComplete] = useState(false);
   const [skipId, setSkipId] = useState<string | null>(null);
   const [connection, setConnection] = useState<'live' | 'polling' | 'offline'>('polling');
   const revisionRef = useRef(0);
@@ -134,6 +135,11 @@ export function SessionQueuePage() {
   if (error && !board) return <p className="text-sm text-red-700">{error}</p>;
   if (!board) return null;
 
+  // An open session can be completed manually; it also closes automatically after its end time.
+  const canComplete = ['OPEN', 'PAUSED', 'DELAYED'].includes(board.session.status);
+  const patientWithDoctor = board.called.length > 0 || board.inService.length > 0;
+  const unseenCount = board.waiting.length + board.reserved.length + board.held.length + board.skipped.length;
+
   const EntryRow = ({
     entry,
     actions,
@@ -216,8 +222,52 @@ export function SessionQueuePage() {
           >
             Call Next
           </Button>
+          {canComplete ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || patientWithDoctor}
+              title={patientWithDoctor ? 'Finish the current consultation first' : undefined}
+              onClick={() => setConfirmComplete(true)}
+            >
+              Complete session
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {confirmComplete && canComplete ? (
+        <Card className="border-amber-300 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
+            <p>
+              Complete this session and set it to <strong>Closed</strong>?
+              {unseenCount > 0
+                ? ` ${unseenCount} patient(s) not yet seen will be marked as no-show.`
+                : ' All booked patients have been seen.'}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setConfirmComplete(false);
+                  void run(() =>
+                    api(`/clinic/sessions/${id}/close`, {
+                      method: 'POST',
+                      json: { unresolvedPolicy: 'MARK_NO_SHOW', note: 'Completed by staff' },
+                    }),
+                  );
+                }}
+              >
+                Complete session
+              </Button>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirmComplete(false)}>
+                Keep open
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 

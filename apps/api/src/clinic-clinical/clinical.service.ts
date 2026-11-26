@@ -3,10 +3,12 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service.js';
+import { BillingService } from '../clinic-billing/billing.service.js';
 import type { ClinicContext } from '../clinic-context/clinic-context.service.js';
 import { normalizeEmail } from '../common/identifiers.js';
 import { validatePasswordStrength } from '../common/password-policy.js';
@@ -44,7 +46,10 @@ export class ClinicalService {
     private readonly prisma: PrismaPlatformService,
     private readonly passwords: PasswordService,
     private readonly audit: AuditService,
+    private readonly billing: BillingService,
   ) {}
+
+  private readonly logger = new Logger(ClinicalService.name);
 
   async invite(ctx: ClinicContext, doctorId: string, dto: InviteDoctorDto) {
     const email = normalizeEmail(dto.email);
@@ -473,6 +478,7 @@ export class ClinicalService {
 
   async addAllergy(ctx: ClinicContext & { doctorId: string }, dto: AllergyDto) {
     return this.sql.withClient(async (client) => {
+      await this.assertTreatmentRelationship(client, ctx, dto.patientId);
       await client.query(
         `INSERT INTO ${ctx.quotedSchema}.patient_allergies
           (id, patient_id, substance, reaction, severity, information_source, recorded_by)
@@ -481,7 +487,7 @@ export class ClinicalService {
           randomUUID(),
           dto.patientId,
           dto.substance.trim(),
-          dto.reaction ?? null,
+          dto.reaction?.trim() || null,
           dto.severity ?? null,
           dto.informationSource ?? null,
           ctx.userId,
@@ -495,6 +501,52 @@ export class ClinicalService {
       );
       return this.allergyBundle(client, ctx.quotedSchema, dto.patientId);
     });
+  }
+
+  /** Removes an allergy recorded in error (kept as INACTIVE for the audit trail). */
+  async removeAllergy(ctx: ClinicContext & { doctorId: string }, allergyId: string) {
+    return this.sql.withClient(async (client) => {
+      const found = await client.query(
+        `SELECT patient_id FROM ${ctx.quotedSchema}.patient_allergies WHERE id = $1 AND status = 'ACTIVE'`,
+        [allergyId],
+      );
+      const patientId = found.rows[0]?.patient_id as string | undefined;
+      if (!patientId) deny('CLINICAL_ACCESS_DENIED', 'Allergy not found', 'missing');
+      await this.assertTreatmentRelationship(client, ctx, patientId);
+      await client.query(
+        `UPDATE ${ctx.quotedSchema}.patient_allergies
+         SET status = 'INACTIVE', updated_at = NOW()
+         WHERE id = $1`,
+        [allergyId],
+      );
+      // With no active allergies left, the patient needs to be re-assessed.
+      await client.query(
+        `UPDATE ${ctx.quotedSchema}.patient_allergy_status SET status = 'UNKNOWN', updated_at = NOW()
+         WHERE patient_id = $1 AND status = 'ALLERGIES_RECORDED'
+           AND NOT EXISTS (
+             SELECT 1 FROM ${ctx.quotedSchema}.patient_allergies
+             WHERE patient_id = $1 AND status = 'ACTIVE'
+           )`,
+        [patientId],
+      );
+      await this.auditClinical(client, ctx, 'allergy.removed', 'patient', patientId);
+      return this.allergyBundle(client, ctx.quotedSchema, patientId);
+    });
+  }
+
+  private async assertTreatmentRelationship(
+    client: { query: Function },
+    ctx: ClinicContext & { doctorId: string },
+    patientId: string,
+  ) {
+    const related = await client.query(
+      `SELECT 1 FROM ${ctx.quotedSchema}.appointments a
+       JOIN ${ctx.quotedSchema}.consultation_sessions s ON s.id = a.session_id
+       WHERE a.patient_id = $1 AND s.doctor_id = $2
+       LIMIT 1`,
+      [patientId, ctx.doctorId],
+    );
+    if (!related.rows[0]) deny('CLINICAL_ACCESS_DENIED', 'No treatment relationship', 'forbidden');
   }
 
   async setAllergyStatus(ctx: ClinicContext & { doctorId: string }, patientId: string, dto: AllergyStatusDto) {
@@ -540,6 +592,23 @@ export class ClinicalService {
   async createPrescription(ctx: ClinicContext & { doctorId: string }, encounterId: string) {
     return this.sql.withClient(async (client) => {
       const encounter = await this.loadOwned(client, ctx, encounterId);
+      const existing = await client.query(
+        `SELECT id, status FROM ${ctx.quotedSchema}.prescriptions
+         WHERE encounter_id = $1 AND status IN ('DRAFT', 'SIGNED')
+         ORDER BY CASE status WHEN 'SIGNED' THEN 0 ELSE 1 END, created_at DESC
+         LIMIT 1`,
+        [encounterId],
+      );
+      const current = existing.rows[0] as { id: string; status: string } | undefined;
+      if (current?.status === 'SIGNED') {
+        deny(
+          'ENCOUNTER_ALREADY_SIGNED',
+          'This consultation already has a signed prescription. It is final and cannot be edited.',
+          'conflict',
+        );
+      }
+      // Keep editing the existing draft instead of creating a second prescription.
+      if (current) return this.getPrescription(ctx, current.id);
       const id = randomUUID();
       await client.query(
         `INSERT INTO ${ctx.quotedSchema}.prescriptions
@@ -614,8 +683,45 @@ export class ClinicalService {
         [id, ctx.doctorId, ctx.userId, dto.version],
       );
       if (!updated.rows[0]) deny('INVALID_CLINICAL_TRANSITION', 'Prescription cannot be signed', 'conflict');
-      return this.getPrescription(ctx, id);
+      const signed = await this.getPrescription(ctx, id);
+      const invoice = await this.draftInvoiceForPrescription(ctx, id);
+      return { ...signed, invoice };
     });
+  }
+
+  /**
+   * After signing, raise a draft invoice (consultation fee + prescribed medicines) for the cashier.
+   * Billing problems never undo the signature; they are logged and the cashier can bill manually.
+   */
+  private async draftInvoiceForPrescription(ctx: ClinicContext & { doctorId: string }, prescriptionId: string) {
+    try {
+      const rx = await this.sql.withClient(async (client) => {
+        const row = await client.query<{ appointment_id: string; patient_id: string }>(
+          `SELECT e.appointment_id, p.patient_id
+           FROM ${ctx.quotedSchema}.prescriptions p
+           JOIN ${ctx.quotedSchema}.clinical_encounters e ON e.id = p.encounter_id
+           WHERE p.id = $1`,
+          [prescriptionId],
+        );
+        const items = await client.query<{ medicine_name: string; dose: string | null; frequency: string | null }>(
+          `SELECT medicine_name, dose, frequency FROM ${ctx.quotedSchema}.prescription_items
+           WHERE prescription_id = $1 ORDER BY sort_order`,
+          [prescriptionId],
+        );
+        return row.rows[0] ? { ...row.rows[0], items: items.rows } : null;
+      });
+      if (!rx) return null;
+      return await this.billing.createDraftForPrescription(ctx, {
+        appointmentId: rx.appointment_id,
+        patientId: rx.patient_id,
+        medicines: rx.items.map((item) => ({ name: item.medicine_name, dose: item.dose, frequency: item.frequency })),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Draft invoice for prescription ${prescriptionId} failed: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      return null;
+    }
   }
 
   async voidPrescription(ctx: ClinicContext & { doctorId: string }, id: string, dto: VoidPrescriptionDto) {

@@ -112,8 +112,8 @@ export class SessionsService {
       where.push(`s.local_date <= $${params.length}::date`);
     }
     if (query.status && query.status !== 'ALL') {
-      params.push(query.status);
-      where.push(`s.status = $${params.length}`);
+      params.push(query.status.split(','));
+      where.push(`s.status = ANY($${params.length}::text[])`);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(limit, offset);
