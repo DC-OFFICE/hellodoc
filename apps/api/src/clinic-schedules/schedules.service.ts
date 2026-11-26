@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ const DEFAULT_HORIZON_DAYS = 90;
 /** Never generate sessions further ahead than this, even after repeated "Extend upcoming". */
 const MAX_HORIZON_DAYS = 365;
 const TEMPLATE_DEACTIVATED_REASON = 'Weekly schedule template deactivated';
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 type TemplateRow = {
   id: string;
@@ -112,34 +114,51 @@ export class SchedulesService {
       assertSlotConfiguration(slot.localStartTime, slot.localEndTime, capacity, duration);
     }
 
+    const weekdays = dto.slots.map((slot) => slot.weekday);
+    if (new Set(weekdays).size !== weekdays.length) {
+      throw new BadRequestException('Each weekday can only be selected once');
+    }
+
     return this.sql.withClient(async (client) => {
       await this.requireDoctor(client, ctx, doctorId, true);
 
+      await client.query('BEGIN');
       const created = [];
-      for (const slot of dto.slots) {
-        const id = randomUUID();
-        const inserted = await client.query<TemplateRow>(
-          `INSERT INTO ${ctx.quotedSchema}.schedule_templates
-            (id, doctor_id, weekday, local_start_time, local_end_time, effective_from,
-             effective_until, default_capacity, expected_duration_minutes, timezone,
-             is_active, created_by, updated_by)
-           VALUES ($1,$2,$3,$4::time,$5::time,$6::date,$7::date,$8,$9,$10,true,$11,$11)
-           RETURNING *`,
-          [
-            id,
-            doctorId,
-            slot.weekday,
-            slot.localStartTime,
-            slot.localEndTime,
-            dto.effectiveFrom,
-            dto.effectiveUntil ?? null,
-            capacity,
-            duration,
-            timezone,
-            ctx.userId,
-          ],
-        );
-        created.push(mapTemplate(inserted.rows[0]!));
+      try {
+        // Serialise schedule changes per doctor so two saves cannot both pass the duplicate check.
+        await client.query(`SELECT id FROM ${ctx.quotedSchema}.doctors WHERE id = $1 FOR UPDATE`, [doctorId]);
+        for (const slot of dto.slots) {
+          await this.assertNoDuplicateTemplate(client, ctx, doctorId, slot.weekday, slot.localStartTime, slot.localEndTime);
+        }
+        for (const slot of dto.slots) {
+          const id = randomUUID();
+          const inserted = await client.query<TemplateRow>(
+            `INSERT INTO ${ctx.quotedSchema}.schedule_templates
+              (id, doctor_id, weekday, local_start_time, local_end_time, effective_from,
+               effective_until, default_capacity, expected_duration_minutes, timezone,
+               is_active, created_by, updated_by)
+             VALUES ($1,$2,$3,$4::time,$5::time,$6::date,$7::date,$8,$9,$10,true,$11,$11)
+             RETURNING *`,
+            [
+              id,
+              doctorId,
+              slot.weekday,
+              slot.localStartTime,
+              slot.localEndTime,
+              dto.effectiveFrom,
+              dto.effectiveUntil ?? null,
+              capacity,
+              duration,
+              timezone,
+              ctx.userId,
+            ],
+          );
+          created.push(mapTemplate(inserted.rows[0]!));
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
       }
 
       await this.audit.record({
@@ -242,6 +261,16 @@ export class SchedulesService {
       if (!template) throw new NotFoundException('Schedule template not found');
       if (template.is_active) throw new BadRequestException('Schedule template is already active');
       await this.requireDoctor(client, ctx, template.doctor_id, true);
+      await this.assertNoDuplicateTemplate(
+        client,
+        ctx,
+        template.doctor_id,
+        template.weekday,
+        String(template.local_start_time).slice(0, 5),
+        String(template.local_end_time).slice(0, 5),
+        template.id,
+        true,
+      );
 
       const updated = await client.query<TemplateRow>(
         `UPDATE ${ctx.quotedSchema}.schedule_templates
@@ -435,6 +464,51 @@ export class SchedulesService {
       horizonDays,
       generatedThrough,
     };
+  }
+
+  /**
+   * Rejects a weekday slot that duplicates an existing template for the doctor (same weekday and
+   * times, active or inactive) or overlaps an active template on that weekday.
+   * With activeOnly (used when activating), only active templates count.
+   */
+  private async assertNoDuplicateTemplate(
+    client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> },
+    ctx: ClinicContext,
+    doctorId: string,
+    weekday: number,
+    start: string,
+    end: string,
+    excludeTemplateId?: string,
+    activeOnly = false,
+  ) {
+    const existing = await client.query(
+      `SELECT id, is_active,
+              to_char(local_start_time, 'HH24:MI') AS start_time,
+              to_char(local_end_time, 'HH24:MI') AS end_time
+       FROM ${ctx.quotedSchema}.schedule_templates
+       WHERE doctor_id = $1 AND weekday = $2
+         AND ($5::uuid IS NULL OR id <> $5::uuid)
+         AND (
+           (local_start_time = $3::time AND local_end_time = $4::time AND ($6::boolean = false OR is_active))
+           OR (is_active AND local_start_time < $4::time AND local_end_time > $3::time)
+         )
+       ORDER BY (local_start_time = $3::time AND local_end_time = $4::time) DESC, is_active DESC
+       LIMIT 1`,
+      [doctorId, weekday, start, end, excludeTemplateId ?? null, activeOnly],
+    );
+    const row = existing.rows[0] as { is_active: boolean; start_time: string; end_time: string } | undefined;
+    if (!row) return;
+    const day = WEEKDAY_NAMES[weekday] ?? 'This weekday';
+    if (row.start_time === start && row.end_time === end) {
+      throw new ConflictException(
+        row.is_active
+          ? `This schedule has already been created (${day} ${start}–${end}).`
+          : `This schedule has already been created (${day} ${start}–${end}) but is inactive. Activate it instead.`,
+      );
+    }
+    throw new ConflictException(
+      `${day} ${start}–${end} overlaps the existing active schedule ${row.start_time}–${row.end_time}.`,
+    );
   }
 
   private async requireDoctor(

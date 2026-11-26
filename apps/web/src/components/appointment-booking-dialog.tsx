@@ -214,7 +214,8 @@ export function AppointmentBookingDialog({
     const to = addDaysIso(sessionDate, 14);
     const qs = new URLSearchParams({
       doctorId,
-      status: 'SCHEDULED',
+      // Open (and paused/delayed) sessions stay bookable while they have room and have not ended.
+      status: 'SCHEDULED,OPEN,PAUSED,DELAYED',
       from: sessionDate,
       to,
       limit: '50',

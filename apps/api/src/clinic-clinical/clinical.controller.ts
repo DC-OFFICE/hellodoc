@@ -154,6 +154,16 @@ export class ClinicalController {
   }
 
   @Roles('clinic_doctor')
+  @Post('clinic/allergies/:id/remove')
+  async removeAllergy(
+    @CurrentSession() session: AuthenticatedSession,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const ctx = await this.clinicContext.resolveDoctor(session);
+    return this.clinical.removeAllergy(ctx, id);
+  }
+
+  @Roles('clinic_doctor')
   @Post('clinic/patients/:id/allergy-status')
   async allergyStatus(
     @CurrentSession() session: AuthenticatedSession,

@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { addDaysIso, clinicTodayIso } from '../utils/session-formatters';
 
 export type SessionViewMode = 'list' | 'calendar';
-export type SessionStatusFilter = 'SCHEDULED' | 'CANCELLED' | 'ALL';
+/** OPEN covers sessions in progress (open or paused). */
+export type SessionStatusFilter = 'SCHEDULED' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'ALL';
 
 export type SessionFilters = {
   q: string;
@@ -33,7 +34,7 @@ export function useSessionFilters() {
     return {
       q: params.get('q') ?? '',
       doctorId: params.get('doctorId') ?? '',
-      status: ['SCHEDULED', 'CANCELLED', 'ALL'].includes(status) ? status : 'SCHEDULED',
+      status: ['SCHEDULED', 'OPEN', 'CLOSED', 'CANCELLED', 'ALL'].includes(status) ? status : 'SCHEDULED',
       from: params.get('from') ?? today,
       to: params.get('to') ?? addDaysIso(today, 90),
       view: view === 'calendar' ? 'calendar' : 'list',

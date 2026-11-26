@@ -177,12 +177,17 @@ export function AppointmentDetailPage() {
               >
                 Copy Tracking Link
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setShowReschedule(true)}>
-                Reschedule
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setShowCancel(true)}>
-                Cancel
-              </Button>
+              {/* After check-in the appointment follows the consultation workflow: no reschedule or cancel. */}
+              {!appointment.checkedInAt ? (
+                <>
+                  <Button type="button" variant="secondary" onClick={() => setShowReschedule(true)}>
+                    Reschedule
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setShowCancel(true)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : null}
             </>
           ) : null}
           <Link to="/appointments">

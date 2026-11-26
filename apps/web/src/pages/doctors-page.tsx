@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
+import { DoctorDeactivateDialog } from '@/components/doctor-deactivate-dialog';
 import { DoctorFormDialog } from '@/components/doctor-form-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,8 @@ export function DoctorsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deactivating, setDeactivating] = useState<Doctor | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const openCreate = useCallback(() => {
     setEditingId(null);
@@ -160,6 +163,7 @@ export function DoctorsPage() {
             <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
           ) : null}
           {error ? <p className="px-6 py-4 text-sm text-destructive">{error}</p> : null}
+          {notice ? <p className="px-6 py-4 text-sm text-primary">{notice}</p> : null}
           {!loading && !error && items.length === 0 ? (
             <p className="px-6 py-10 text-center text-sm text-muted-foreground">
               No doctors found.
@@ -214,13 +218,16 @@ export function DoctorsPage() {
                             type="button"
                             disabled={busyId === doctor.id}
                             onClick={async () => {
+                              setError(null);
+                              setNotice(null);
+                              if (doctor.status === 'ACTIVE') {
+                                // Deactivation may need future sessions cancelled first.
+                                setDeactivating(doctor);
+                                return;
+                              }
                               setBusyId(doctor.id);
                               try {
-                                const path =
-                                  doctor.status === 'ACTIVE'
-                                    ? `/clinic/doctors/${doctor.id}/deactivate`
-                                    : `/clinic/doctors/${doctor.id}/reactivate`;
-                                await api(path, { method: 'POST', json: {} });
+                                await api(`/clinic/doctors/${doctor.id}/reactivate`, { method: 'POST', json: {} });
                                 await load();
                               } catch (err) {
                                 setError(
@@ -259,6 +266,18 @@ export function DoctorsPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <DoctorDeactivateDialog
+        doctor={deactivating}
+        onOpenChange={(open) => {
+          if (!open) setDeactivating(null);
+        }}
+        onDeactivated={(message) => {
+          setDeactivating(null);
+          setNotice(message);
+          void load();
+        }}
+      />
 
       <DoctorFormDialog
         open={formOpen}

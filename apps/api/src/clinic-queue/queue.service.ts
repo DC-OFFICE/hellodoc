@@ -642,6 +642,21 @@ export class QueueService {
       try {
         const session = await this.lockSession(client, ctx.quotedSchema, sessionId);
         if (!session) httpError('SESSION_NOT_FOUND', 'Session not found', 'notfound');
+        if (!['OPEN', 'PAUSED', 'DELAYED'].includes(session.status)) {
+          httpError('SESSION_NOT_OPEN', 'Only an open session can be completed', 'conflict');
+        }
+        const active = await client.query(
+          `SELECT count(*)::int AS c FROM ${ctx.quotedSchema}.queue_entries
+           WHERE session_id = $1 AND state IN ('CALLED','IN_SERVICE')`,
+          [sessionId],
+        );
+        if ((active.rows[0]?.c ?? 0) > 0) {
+          httpError(
+            'SESSION_NOT_OPEN',
+            'A patient is still being called or seen. Finish that consultation before completing the session.',
+            'conflict',
+          );
+        }
         const unresolved = await client.query(
           `SELECT count(*)::int AS c FROM ${ctx.quotedSchema}.queue_entries
            WHERE session_id = $1 AND state IN ('WAITING','CALLED','IN_SERVICE','HELD','RESERVED')`,

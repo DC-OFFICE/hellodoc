@@ -192,6 +192,7 @@ function statusTone(status: string) {
 export function PatientDetailPage() {
   const { id } = useParams();
   const { user } = useClinicAuth();
+  const isDoctor = user?.role === 'clinic_doctor';
   const [patient, setPatient] = useState<Patient | null>(null);
   const [audit, setAudit] = useState<AuditItem[]>([]);
   const [sms, setSms] = useState<SmsRow[]>([]);
@@ -346,19 +347,22 @@ export function PatientDetailPage() {
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {patient.status === 'ACTIVE' ? (
+          {/* Doctors review history only; patient management stays with front desk and managers. */}
+          {!isDoctor && patient.status === 'ACTIVE' ? (
             <Link to={`/appointments/new?patientId=${patient.id}`}>
               <Button type="button" size="sm">
                 <Plus className="size-3.5 mr-1" /> Book Appointment
               </Button>
             </Link>
           ) : null}
-          <Link to={`/patients/${patient.id}/edit`}>
-            <Button type="button" size="sm" variant="secondary">
-              Edit Patient
-            </Button>
-          </Link>
-          {patient.status === 'ACTIVE' ? (
+          {!isDoctor ? (
+            <Link to={`/patients/${patient.id}/edit`}>
+              <Button type="button" size="sm" variant="secondary">
+                Edit Patient
+              </Button>
+            </Link>
+          ) : null}
+          {isDoctor ? null : patient.status === 'ACTIVE' ? (
             <Button
               type="button"
               size="sm"
@@ -373,9 +377,9 @@ export function PatientDetailPage() {
               Reactivate
             </Button>
           )}
-          <Link to="/patients">
+          <Link to={isDoctor ? '/doctor/worklist' : '/patients'}>
             <Button type="button" size="sm" variant="ghost">
-              Back to directory
+              {isDoctor ? 'Back to worklist' : 'Back to directory'}
             </Button>
           </Link>
         </div>

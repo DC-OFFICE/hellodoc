@@ -78,6 +78,13 @@ export class UpdateDoctorDto {
   version!: number;
 }
 
+export class DeactivateDoctorDto {
+  /** Cancel the doctor's future sessions that have no bookings, then deactivate. */
+  @IsOptional()
+  @IsBoolean()
+  cancelFutureSessions?: boolean;
+}
+
 export class ListDoctorsQueryDto {
   @IsOptional()
   @IsString()

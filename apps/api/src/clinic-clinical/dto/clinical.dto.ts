@@ -89,7 +89,8 @@ export class AllergyDto {
   patientId!: string;
 
   @IsString()
-  @MinLength(2)
+  @MinLength(2, { message: 'Enter the allergen (at least 2 characters)' })
+  @MaxLength(120, { message: 'Allergen must be 120 characters or fewer' })
   substance!: string;
 
   @IsOptional()
