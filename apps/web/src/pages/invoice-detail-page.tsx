@@ -21,7 +21,17 @@ type Invoice = {
   subtotal: string;
   discountTotal: string;
   taxTotal: string;
-  items: Array<{ description: string; quantity: number; unitPrice: string; lineTotal: string }>;
+  patientId: string;
+  appointmentId: string | null;
+  version: number;
+  items: Array<{
+    serviceId: string | null;
+    description: string;
+    quantity: number;
+    unitPrice: string;
+    discount: string;
+    lineTotal: string;
+  }>;
   payments: Array<{ id: string; receipt_number: string; amount: string; method: string }>;
 };
 
@@ -33,11 +43,52 @@ export function InvoiceDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const payKey = useRef(crypto.randomUUID());
+  // Draft line prices (e.g. medicines added automatically from a signed prescription at 0.00).
+  const [draftPrices, setDraftPrices] = useState<string[]>([]);
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  function showInvoice(data: Invoice) {
+    setInvoice(data);
+    setDraftPrices(data.items.map((item) => item.unitPrice));
+  }
 
   async function load() {
     const data = await api<Invoice>(`/clinic/invoices/${id}`);
-    setInvoice(data);
+    showInvoice(data);
     setAmount(data.balance);
+  }
+
+  async function saveDraftPrices(current: Invoice) {
+    const invalid = draftPrices.findIndex((price) => !/^\d+(\.\d{1,2})?$/.test(price.trim()));
+    if (invalid >= 0) {
+      setError(`Line ${invalid + 1}: enter a price such as 250 or 250.00`);
+      return;
+    }
+    setSavingDraft(true);
+    setError(null);
+    try {
+      const saved = await api<Invoice>(`/clinic/invoices/${id}/draft`, {
+        method: 'PATCH',
+        json: {
+          patientId: current.patientId,
+          appointmentId: current.appointmentId ?? undefined,
+          version: current.version,
+          items: current.items.map((item, index) => ({
+            serviceId: item.serviceId,
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: draftPrices[index]!.trim(),
+            discount: item.discount,
+          })),
+        },
+      });
+      showInvoice(saved);
+      setMessage('Draft prices saved');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save prices');
+    } finally {
+      setSavingDraft(false);
+    }
   }
 
   useEffect(() => {
@@ -47,6 +98,8 @@ export function InvoiceDetailPage() {
   }, [id]);
 
   if (!invoice) return <p className="text-sm text-muted-foreground">{error ?? 'Loading invoice…'}</p>;
+  const editableDraft = invoice.status === 'DRAFT' && invoice.items.every((item) => item.serviceId);
+  const pricesChanged = invoice.items.some((item, index) => item.unitPrice !== draftPrices[index]?.trim());
 
   return (
     <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -64,23 +117,55 @@ export function InvoiceDetailPage() {
           ) : null}
           <table className="w-full">
             <tbody>
-              {invoice.items.map((item) => (
-                <tr key={item.description} className="border-b">
+              {invoice.items.map((item, index) => (
+                <tr key={`${item.description}-${index}`} className="border-b">
                   <td className="py-2">{item.description}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</td>
-                  <td className="text-right">LKR {item.lineTotal}</td>
+                  {editableDraft ? (
+                    <td className="py-1 text-right">
+                      <label className="sr-only" htmlFor={`price-${index}`}>Unit price for {item.description}</label>
+                      <Input
+                        id={`price-${index}`}
+                        className="ml-auto h-8 w-32 text-right"
+                        inputMode="decimal"
+                        value={draftPrices[index] ?? ''}
+                        onChange={(event) =>
+                          setDraftPrices((prices) => prices.map((p, i) => (i === index ? event.target.value : p)))
+                        }
+                      />
+                    </td>
+                  ) : (
+                    <td className="text-right">LKR {item.lineTotal}</td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="flex gap-2">
+          {editableDraft ? (
+            <p className="text-xs text-muted-foreground">
+              Draft: set each line&apos;s unit price (LKR), save, then issue the invoice.
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {editableDraft ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={savingDraft || !pricesChanged}
+                onClick={() => void saveDraftPrices(invoice)}
+              >
+                {savingDraft ? 'Saving…' : 'Save prices'}
+              </Button>
+            ) : null}
             {invoice.status === 'DRAFT' ? (
               <Button
                 type="button"
+                disabled={pricesChanged}
+                title={pricesChanged ? 'Save prices before issuing' : undefined}
                 onClick={async () => {
                   setError(null);
                   try {
                     const issued = await api<Invoice>(`/clinic/invoices/${id}/issue`, { method: 'POST', json: {} });
-                    setInvoice(issued);
+                    showInvoice(issued);
                     setMessage(`Issued ${issued.invoiceNumber}`);
                   } catch (err) {
                     setError(err instanceof ApiError ? err.message : 'Could not issue invoice');
@@ -150,7 +235,7 @@ export function InvoiceDetailPage() {
                     json: { amount, method, idempotencyKey: payKey.current },
                   });
                   payKey.current = crypto.randomUUID();
-                  setInvoice(paid);
+                  showInvoice(paid);
                   setAmount(paid.balance);
                   setMessage('Payment recorded');
                 } catch (err) {

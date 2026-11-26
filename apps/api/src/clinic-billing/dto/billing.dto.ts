@@ -188,6 +188,12 @@ export class InvoiceItemInput {
   @IsUUID()
   serviceId!: string;
 
+  /** Optional line text (e.g. a prescribed medicine); defaults to the service name. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  description?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

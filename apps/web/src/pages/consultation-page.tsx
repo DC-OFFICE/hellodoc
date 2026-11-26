@@ -44,7 +44,10 @@ type Encounter = {
   assessment: string | null;
   treatment_plan: string | null;
   follow_up_instructions: string | null;
-  allergies: { status: string; items: Array<{ substance: string; reaction: string | null }> };
+  allergies: {
+    status: string;
+    items: Array<{ id: string; substance: string; reaction: string | null; severity: string | null }>;
+  };
   prescription?: Prescription | null;
   vitals?: Array<{
     id: string;
@@ -76,6 +79,9 @@ export function ConsultationPage() {
   const [diastolic, setDiastolic] = useState('');
   const [pulse, setPulse] = useState('');
   const [temperature, setTemperature] = useState('');
+  const [allergySubstance, setAllergySubstance] = useState('');
+  const [allergyReaction, setAllergyReaction] = useState('');
+  const [allergySeverity, setAllergySeverity] = useState('');
 
   const load = async () => {
     if (!id) return;
@@ -106,6 +112,8 @@ export function ConsultationPage() {
   }
 
   const locked = encounter.status !== 'DRAFT';
+  // A signed prescription is final: shown read-only, never edited or re-created from here.
+  const rxLocked = prescription?.status === 'SIGNED';
   const latestVitals = encounter.vitals?.[0];
 
   const setNote = (key: keyof Encounter, value: string) => {
@@ -204,6 +212,50 @@ export function ConsultationPage() {
     }
   };
 
+  const addAllergy = async () => {
+    const substance = allergySubstance.trim();
+    if (substance.length < 2) {
+      setError('Enter the allergen (at least 2 characters), e.g. Penicillin');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/clinic/allergies`, {
+        method: 'POST',
+        json: {
+          patientId: encounter.patient_id,
+          substance,
+          reaction: allergyReaction.trim() || undefined,
+          severity: allergySeverity || undefined,
+        },
+      });
+      setAllergySubstance('');
+      setAllergyReaction('');
+      setAllergySeverity('');
+      await load();
+      setMessage(`Allergy recorded: ${substance}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not record allergy');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeAllergy = async (allergyId: string, substance: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/clinic/allergies/${allergyId}/remove`, { method: 'POST', json: {} });
+      await load();
+      setMessage(`Allergy removed: ${substance}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not remove allergy');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const updateMedicine = (key: string, patch: Partial<Omit<MedicineRow, 'key'>>) => {
     setMedicines((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   };
@@ -249,12 +301,19 @@ export function ConsultationPage() {
     setBusy(true);
     setError(null);
     try {
-      const signed = await api<Prescription>(`/clinic/prescriptions/${prescription.id}/sign`, {
-        method: 'POST',
-        json: { version: prescription.version },
-      });
+      const signed = await api<Prescription & { invoice?: { invoiceId: string; created: boolean } | null }>(
+        `/clinic/prescriptions/${prescription.id}/sign`,
+        {
+          method: 'POST',
+          json: { version: prescription.version },
+        },
+      );
       setPrescription(signed);
-      setMessage(`Prescription ${signed.status.toLowerCase()}`);
+      setMessage(
+        signed.invoice?.created
+          ? 'Prescription signed. A draft invoice with the consultation fee and prescribed medicines was sent to billing.'
+          : `Prescription ${signed.status.toLowerCase()}`,
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Prescription sign failed');
     } finally {
@@ -375,81 +434,102 @@ export function ConsultationPage() {
                 <div>
                   <CardTitle>Prescription</CardTitle>
                   <CardDescription>
-                    {encounter.status === 'SIGNED'
-                      ? 'Add one or more medicines, save a draft, then sign and print.'
-                      : 'Available after the consultation is signed.'}
+                    {rxLocked
+                      ? 'This prescription is signed and can no longer be changed. You can review and print it.'
+                      : encounter.status === 'SIGNED'
+                        ? 'Add one or more medicines, save a draft, then sign and print.'
+                        : 'Available after the consultation is signed.'}
                   </CardDescription>
                 </div>
                 {prescription ? <Badge tone={prescription.status === 'SIGNED' ? 'active' : 'pending'}>{prescription.status}</Badge> : null}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-3">
-                {medicines.map((row, index) => (
-                  <div key={row.key} className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-                    <div>
-                      <Label htmlFor={`medicine-${row.key}`}>
-                        {medicines.length > 1 ? `Medicine ${index + 1}` : 'Medicine'}
-                      </Label>
-                      <Input
-                        id={`medicine-${row.key}`}
-                        className="mt-1.5"
-                        placeholder="Medicine name"
-                        value={row.medicineName}
-                        onChange={(event) => updateMedicine(row.key, { medicineName: event.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`dose-${row.key}`}>Dose</Label>
-                      <Input
-                        id={`dose-${row.key}`}
-                        className="mt-1.5"
-                        placeholder="1 tablet"
-                        value={row.dose}
-                        onChange={(event) => updateMedicine(row.key, { dose: event.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`frequency-${row.key}`}>Frequency</Label>
-                      <Input
-                        id={`frequency-${row.key}`}
-                        className="mt-1.5"
-                        placeholder="Twice daily"
-                        value={row.frequency}
-                        onChange={(event) => updateMedicine(row.key, { frequency: event.target.value })}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      aria-label={`Remove medicine ${index + 1}`}
-                      title="Remove medicine"
-                      disabled={busy || medicines.length === 1}
-                      onClick={() => setMedicines((rows) => rows.filter((r) => r.key !== row.key))}
+              {rxLocked ? (
+                <div className="space-y-2">
+                  {(prescription?.items ?? []).map((item, index) => (
+                    <div
+                      key={`${item.medicine_name}-${index}`}
+                      className="grid gap-1 rounded-lg border border-border bg-muted/40 px-3 py-2 sm:grid-cols-3"
                     >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={busy || encounter.status !== 'SIGNED'}
-                  onClick={() => setMedicines((rows) => [...rows, blankMedicine()])}
-                >
-                  <Plus className="mr-1.5 size-4" />
-                  Add medicine
-                </Button>
-              </div>
+                      <p className="font-medium text-foreground">{item.medicine_name}</p>
+                      <p className="text-muted-foreground">{item.dose}</p>
+                      <p className="text-muted-foreground">{item.frequency}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {medicines.map((row, index) => (
+                    <div key={row.key} className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+                      <div>
+                        <Label htmlFor={`medicine-${row.key}`}>
+                          {medicines.length > 1 ? `Medicine ${index + 1}` : 'Medicine'}
+                        </Label>
+                        <Input
+                          id={`medicine-${row.key}`}
+                          className="mt-1.5"
+                          placeholder="Medicine name"
+                          value={row.medicineName}
+                          onChange={(event) => updateMedicine(row.key, { medicineName: event.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`dose-${row.key}`}>Dose</Label>
+                        <Input
+                          id={`dose-${row.key}`}
+                          className="mt-1.5"
+                          placeholder="1 tablet"
+                          value={row.dose}
+                          onChange={(event) => updateMedicine(row.key, { dose: event.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`frequency-${row.key}`}>Frequency</Label>
+                        <Input
+                          id={`frequency-${row.key}`}
+                          className="mt-1.5"
+                          placeholder="Twice daily"
+                          value={row.frequency}
+                          onChange={(event) => updateMedicine(row.key, { frequency: event.target.value })}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label={`Remove medicine ${index + 1}`}
+                        title="Remove medicine"
+                        disabled={busy || medicines.length === 1}
+                        onClick={() => setMedicines((rows) => rows.filter((r) => r.key !== row.key))}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || encounter.status !== 'SIGNED'}
+                    onClick={() => setMedicines((rows) => [...rows, blankMedicine()])}
+                  >
+                    <Plus className="mr-1.5 size-4" />
+                    Add medicine
+                  </Button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
-                <Button type="button" disabled={busy || encounter.status !== 'SIGNED' || medicines.every((row) => row.medicineName.trim() === '')} onClick={() => void savePrescription()}>
-                  Save prescription draft
-                </Button>
-                <Button type="button" variant="secondary" disabled={busy || !prescription || prescription.status !== 'DRAFT'} onClick={() => void signPrescription()}>
-                  Sign prescription
-                </Button>
+                {!rxLocked ? (
+                  <>
+                    <Button type="button" disabled={busy || encounter.status !== 'SIGNED' || medicines.every((row) => row.medicineName.trim() === '')} onClick={() => void savePrescription()}>
+                      Save prescription draft
+                    </Button>
+                    <Button type="button" variant="secondary" disabled={busy || !prescription || prescription.status !== 'DRAFT'} onClick={() => void signPrescription()}>
+                      Sign prescription
+                    </Button>
+                  </>
+                ) : null}
                 <Button
                   type="button"
                   variant="outline"
@@ -496,15 +576,88 @@ export function ConsultationPage() {
                 <p className="text-muted-foreground">Confirm allergies before signing. Not assessed is not the same as no known allergies.</p>
               ) : null}
               {encounter.allergies.items.map((item) => (
-                <p key={item.substance} className="rounded-lg border border-border bg-muted/40 px-3 py-2">
-                  <span className="font-medium text-foreground">{item.substance}</span>
-                  {item.reaction ? <span className="text-muted-foreground"> — {item.reaction}</span> : null}
-                </p>
+                <div
+                  key={item.id}
+                  className="flex items-start justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2"
+                >
+                  <p>
+                    <span className="font-medium text-foreground">{item.substance}</span>
+                    {item.severity ? (
+                      <span className="ml-1.5 text-xs uppercase text-muted-foreground">{item.severity.toLowerCase()}</span>
+                    ) : null}
+                    {item.reaction ? <span className="block text-muted-foreground">{item.reaction}</span> : null}
+                  </p>
+                  {!locked ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 shrink-0"
+                      aria-label={`Remove allergy ${item.substance}`}
+                      title="Remove (recorded in error)"
+                      disabled={busy}
+                      onClick={() => void removeAllergy(item.id, item.substance)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </div>
               ))}
               {encounter.allergies.items.length === 0 && encounter.allergies.status !== 'UNKNOWN' ? (
                 <p className="text-muted-foreground">No active allergies recorded.</p>
               ) : null}
-              {!locked && encounter.allergies.status !== 'NO_KNOWN_ALLERGIES' ? (
+              {!locked ? (
+                <div className="space-y-2 border-t border-border pt-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Add allergy</p>
+                  <div>
+                    <Label htmlFor="allergy-substance">Allergen</Label>
+                    <Input
+                      id="allergy-substance"
+                      className="mt-1.5"
+                      placeholder="e.g. Penicillin"
+                      value={allergySubstance}
+                      onChange={(event) => setAllergySubstance(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="allergy-reaction">Reaction (optional)</Label>
+                    <Input
+                      id="allergy-reaction"
+                      className="mt-1.5"
+                      placeholder="e.g. Rash, swelling"
+                      value={allergyReaction}
+                      onChange={(event) => setAllergyReaction(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="allergy-severity">Severity (optional)</Label>
+                    <select
+                      id="allergy-severity"
+                      className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                      value={allergySeverity}
+                      onChange={(event) => setAllergySeverity(event.target.value)}
+                    >
+                      <option value="">Not specified</option>
+                      <option value="MILD">Mild</option>
+                      <option value="MODERATE">Moderate</option>
+                      <option value="SEVERE">Severe</option>
+                      <option value="UNKNOWN">Unknown</option>
+                    </select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy || allergySubstance.trim() === ''}
+                    onClick={() => void addAllergy()}
+                  >
+                    <Plus className="mr-1.5 size-4" />
+                    Add allergy
+                  </Button>
+                </div>
+              ) : null}
+              {!locked &&
+              encounter.allergies.status !== 'NO_KNOWN_ALLERGIES' &&
+              encounter.allergies.items.length === 0 ? (
                 <Button type="button" variant="outline" disabled={busy} onClick={() => void markNoKnownAllergies()}>
                   Mark no known allergies
                 </Button>
