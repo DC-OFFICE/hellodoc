@@ -221,6 +221,37 @@ export class PatientsService {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * Doctors only see patients they are assigned to: patients with an appointment in one of the
+   * doctor's own sessions. Returns a SQL condition on alias p (and pushes its parameter), or null
+   * for other roles.
+   */
+  private doctorScope(ctx: ClinicContext, params: unknown[]): string | null {
+    if (ctx.role !== 'CLINIC_DOCTOR') return null;
+    params.push(ctx.userId);
+    return `EXISTS (
+      SELECT 1 FROM ${ctx.quotedSchema}.appointments da
+      JOIN ${ctx.quotedSchema}.consultation_sessions ds ON ds.id = da.session_id
+      JOIN ${ctx.quotedSchema}.doctor_user_links dl ON dl.doctor_id = ds.doctor_id AND dl.active = TRUE
+      WHERE da.patient_id = p.id AND dl.user_id = $${params.length}
+    )`;
+  }
+
+  private async assertDoctorCanSee(
+    client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> },
+    ctx: ClinicContext,
+    patientId: string,
+  ) {
+    const params: unknown[] = [patientId];
+    const scope = this.doctorScope(ctx, params);
+    if (!scope) return;
+    const visible = await client.query(
+      `SELECT 1 FROM ${ctx.quotedSchema}.patients p WHERE p.id = $1 AND ${scope}`,
+      params,
+    );
+    if (!visible.rows[0]) throw new NotFoundException('Patient not found');
+  }
+
   async list(ctx: ClinicContext, query: ListPatientsQueryDto) {
     const limit = query.limit ?? 25;
     const offset = query.offset ?? 0;
@@ -277,6 +308,8 @@ export class PatientsService {
         );
       }
     }
+    const listScope = this.doctorScope(ctx, params);
+    if (listScope) where.push(listScope);
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(limit, offset);
 
@@ -375,6 +408,8 @@ export class PatientsService {
         )`,
       );
     }
+    const searchScope = this.doctorScope(ctx, params);
+    if (searchScope) where.push(searchScope);
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(limit, offset);
 
@@ -473,6 +508,7 @@ export class PatientsService {
     return this.sql.withClient(async (client) => {
       const row = await this.getRow(client, ctx.quotedSchema, id);
       if (!row) throw new NotFoundException('Patient not found');
+      await this.assertDoctorCanSee(client, ctx, id);
       const contacts = await this.loadContacts(client, ctx.quotedSchema, [id]);
       return mapPatient(row, contacts.get(id) ?? []);
     });
@@ -482,6 +518,7 @@ export class PatientsService {
     return this.sql.withClient(async (client) => {
       const row = await this.getRow(client, ctx.quotedSchema, id);
       if (!row) throw new NotFoundException('Patient not found');
+      await this.assertDoctorCanSee(client, ctx, id);
 
       const ownContacts = await client.query<{
         normalized_value: string;
@@ -498,6 +535,9 @@ export class PatientsService {
       }
 
       const numbers = [...new Set(ownContacts.rows.map((c) => c.normalized_value))];
+      // Doctors only see linked patients they are also assigned to.
+      const relatedParams: unknown[] = [id, numbers];
+      const relatedScope = this.doctorScope(ctx, relatedParams);
       const related = await client.query<{
         id: string;
         patient_number: string;
@@ -535,9 +575,10 @@ export class PatientsService {
            ON oc.patient_id = $1 AND oc.normalized_value = c.normalized_value
          WHERE c.normalized_value = ANY($2::text[])
            AND c.patient_id <> $1
+           ${relatedScope ? `AND ${relatedScope}` : ''}
          ORDER BY p.id, c.normalized_value, c.is_primary DESC, c.created_at ASC
          LIMIT 50`,
-        [id, numbers],
+        relatedParams,
       );
 
       const items = related.rows.map((item) => ({

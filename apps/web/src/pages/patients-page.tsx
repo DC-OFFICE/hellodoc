@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { PatientFormDialog } from '@/components/patient-form-dialog';
+import { useClinicAuth } from '@/lib/auth';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -22,7 +23,14 @@ import {
 import { api, ApiError } from '@/lib/api';
 import type { Patient } from '@/lib/clinic-types';
 
+/** Doctors see patients through their worklist only, not the clinic-wide directory. */
 export function PatientsPage() {
+  const { user } = useClinicAuth();
+  if (user?.role === 'clinic_doctor') return <Navigate to="/doctor/worklist" replace />;
+  return <PatientsDirectory />;
+}
+
+function PatientsDirectory() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<Patient[]>([]);
   const [total, setTotal] = useState(0);
