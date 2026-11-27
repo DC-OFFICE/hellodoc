@@ -9,6 +9,11 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { AuditService } from '../audit/audit.service.js';
 import type { ClinicContext } from '../clinic-context/clinic-context.service.js';
+import {
+  type ActiveMembership,
+  EMAIL_ALREADY_REGISTERED_MESSAGE,
+  hasConflictingClinicMembership,
+} from '../common/clinic-account-email.js';
 import { normalizeEmail } from '../common/identifiers.js';
 import {
   compareMoney,
@@ -113,27 +118,14 @@ export class BillingService {
     return this.inviteStaff(ctx, dto.email, 'CLINIC_RECEPTIONIST');
   }
 
-  /**
-   * An email can only belong to one clinic staff account: a second membership makes that user
-   * unable to sign in ("Multiple clinic memberships require explicit clinic selection").
-   */
-  private async assertEmailAvailableForStaff(
-    emailNormalized: string,
-    allow?: { tenantId: string; role: string },
-  ) {
+  /** See hasConflictingClinicMembership: a second clinic membership locks the user out of login. */
+  private async assertEmailAvailableForStaff(emailNormalized: string, allow?: ActiveMembership) {
     const existing = await this.prisma.platformUser.findUnique({
       where: { emailNormalized },
       select: { memberships: { where: { active: true }, select: { tenantId: true, role: true } } },
     });
-    const conflicting = (existing?.memberships ?? []).filter(
-      (m) => !(allow && m.tenantId === allow.tenantId && m.role === allow.role),
-    );
-    if (conflicting.length > 0) {
-      fail(
-        'EMAIL_ALREADY_REGISTERED',
-        'This email address is already registered to an existing account. Use a different email address.',
-        'conflict',
-      );
+    if (hasConflictingClinicMembership(existing?.memberships ?? [], allow)) {
+      fail('EMAIL_ALREADY_REGISTERED', EMAIL_ALREADY_REGISTERED_MESSAGE, 'conflict');
     }
   }
 

@@ -8,6 +8,10 @@ import {
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service.js';
 import type { ClinicContext } from '../clinic-context/clinic-context.service.js';
+import {
+  EMAIL_ALREADY_REGISTERED_MESSAGE,
+  hasConflictingClinicMembership,
+} from '../common/clinic-account-email.js';
 import { normalizeEmail } from '../common/identifiers.js';
 import { validatePasswordStrength } from '../common/password-policy.js';
 import { PasswordService } from '../common/password.service.js';
@@ -46,6 +50,20 @@ export class ClinicalService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * A doctor login may re-use an account that is already this clinic's doctor (re-invite), but not
+   * one with any other active clinic role: a second membership locks the user out of login.
+   */
+  private async assertEmailAvailableForDoctor(emailNormalized: string, tenantId: string) {
+    const existing = await this.prisma.platformUser.findUnique({
+      where: { emailNormalized },
+      select: { memberships: { where: { active: true }, select: { tenantId: true, role: true } } },
+    });
+    if (hasConflictingClinicMembership(existing?.memberships ?? [], { tenantId, role: 'CLINIC_DOCTOR' })) {
+      deny('EMAIL_ALREADY_REGISTERED', EMAIL_ALREADY_REGISTERED_MESSAGE, 'conflict');
+    }
+  }
+
   async invite(ctx: ClinicContext, doctorId: string, dto: InviteDoctorDto) {
     const email = normalizeEmail(dto.email);
     const doctor = await this.sql.withClient(async (client) => {
@@ -56,6 +74,7 @@ export class ClinicalService {
       return row.rows[0] as { id: string; status: string } | undefined;
     });
     if (!doctor || doctor.status !== 'ACTIVE') deny('DOCTOR_PROFILE_NOT_LINKED', 'Doctor profile not found', 'missing');
+    await this.assertEmailAvailableForDoctor(email, ctx.tenantId);
 
     const raw = randomBytes(32).toString('base64url');
     const tokenHash = createHash('sha256').update(raw).digest('hex');
@@ -115,6 +134,8 @@ export class ClinicalService {
     if (!invite || new Date(invite.expires_at).getTime() < Date.now()) {
       deny('CLINICAL_ACCESS_DENIED', 'Invitation is invalid or expired', 'forbidden');
     }
+    // Re-check at acceptance: the email may have been registered after the invitation was sent.
+    await this.assertEmailAvailableForDoctor(invite.email_normalized, invite.tenant_id);
     const passwordHash = await this.passwords.hash(dto.password);
     let user = await this.prisma.platformUser.findUnique({
       where: { emailNormalized: invite.email_normalized },
